@@ -9,6 +9,10 @@ Before changing ima.copilot call behavior, read:
 - `docs/effective-ima-call-methods.md`
 - `docs/ima-copilot-call-experiments.md`
 
+Before changing OS-specific paths, app launch, profile, safe-storage, or UI automation behavior, also read:
+
+- `docs/platform-adapter.md`
+
 The current reliable runtime path is `ima ask --kb <knowledgeBaseName>` through macOS Accessibility UI transport. Direct API transport exists and has unit coverage, but it is still experimental in real app runs because it can return ima business error `600001`.
 
 ## Development Rules

@@ -15,10 +15,11 @@ export const statusCommand = cli({
     const state = inspectIma();
     const api = inspectApiState();
     const uiProbeUnavailable = Boolean(state.error);
+    const platformIncomplete = uiProbeUnavailable && api.platform && api.platform !== 'macos';
     return [{
       Status: api.ready
         ? (uiProbeUnavailable ? 'API login state found; UI probe unavailable' : 'API login state found')
-        : (uiProbeUnavailable ? 'UI probe unavailable' : (state.running ? 'App connected' : 'Not ready')),
+        : (platformIncomplete ? `${api.platformLabel || api.platform} support incomplete` : (uiProbeUnavailable ? 'UI probe unavailable' : (state.running ? 'App connected' : 'Not ready'))),
       Running: uiProbeUnavailable ? 'unknown' : (state.running ? 'yes' : 'no'),
       Trusted: uiProbeUnavailable ? 'unknown' : (state.trusted ? 'yes' : 'no'),
       Title: state.title || '',

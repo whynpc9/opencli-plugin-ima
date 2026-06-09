@@ -24,6 +24,9 @@ export const setupCommand = cli({
     if (uiProbeUnavailable && api.ready) {
       status = 'API ready; UI probe unavailable';
       hint = 'API transport can use --kb-id. UI fallback needs Accessibility access and --kb "<knowledgeBaseName>".';
+    } else if (uiProbeUnavailable && api.platform && api.platform !== 'macos') {
+      status = `${api.platformLabel || api.platform} support incomplete`;
+      hint = 'Current local UI and cookie-decryption backends are macOS-only. Use explicit IMA_COOKIE for API experiments, or implement the platform WebContents backend first.';
     } else if (uiProbeUnavailable) {
       status = 'UI probe unavailable';
       hint = 'Open and log in to ima.copilot, then retry. You can also set IMA_COOKIE for local development.';

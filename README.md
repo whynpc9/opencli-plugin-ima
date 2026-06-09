@@ -141,6 +141,8 @@ opencli ima export --media-id "<MediaId>" --kb-id "<KnowledgeBaseId>" --transpor
 - macOS Keychain access for `ima.copilot Safe Storage` if API transport decrypts local cookies.
 - Node.js runtime with a global `WebSocket` implementation if WebContents transport is used. Node.js 22+ is recommended.
 
+Windows support is not complete yet. The codebase now has a platform adapter boundary for future Windows work; see [Platform Adapter and OS Differences](docs/platform-adapter.md).
+
 ## Environment Variables
 
 | Variable | Purpose |
@@ -185,6 +187,7 @@ lib/api.js                 Direct ima API transport
 lib/webcontents.js         API execution inside ima.copilot's real Chromium WebContents
 lib/documents.js           Local preview URL extraction and file download helpers
 lib/ax.js                  Swift Accessibility UI transport
+lib/platform.js            OS-specific paths, app launch, profile, and safe-storage adapters
 test/*.test.js             Unit and command registration tests
 docs/                      Experiment notes and implementation evidence
 ```

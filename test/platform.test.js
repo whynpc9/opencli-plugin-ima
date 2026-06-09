@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { getImaRuntimeConfig, normalizePlatform } from '../lib/platform.js';
+
+test('platform config preserves current macOS runtime defaults', () => {
+  const config = getImaRuntimeConfig({
+    platform: 'darwin',
+    homeDir: '/Users/example',
+    env: {},
+  });
+
+  assert.equal(config.os, 'macos');
+  assert.equal(config.label, 'macOS');
+  assert.equal(config.identifiers.bundleId, 'com.tencent.imamac');
+  assert.equal(config.identifiers.clientType, 'mac');
+  assert.equal(config.paths.appPath, '/Applications/ima.copilot.app');
+  assert.equal(config.paths.appSupportDir, '/Users/example/Library/Application Support/com.tencent.imamac');
+  assert.equal(config.paths.profileDir, '/Users/example/Library/Application Support/com.tencent.imamac/Default');
+  assert.equal(config.paths.cookieDb, '/Users/example/Library/Application Support/com.tencent.imamac/Default/Extension Cookies');
+  assert.equal(config.capabilities.uiTransport, true);
+  assert.equal(config.capabilities.apiCookieDecryption, true);
+  assert.equal(config.capabilities.webContentsLaunch, true);
+});
+
+test('platform config records Windows extension points without claiming support', () => {
+  const config = getImaRuntimeConfig({
+    platform: 'win32',
+    env: {
+      IMA_APP_PATH: 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\ima.exe',
+      IMA_APP_SUPPORT_DIR: 'C:\\Users\\example\\AppData\\Roaming\\ima.copilot',
+      IMA_PROFILE_DIR: 'C:\\Users\\example\\AppData\\Roaming\\ima.copilot\\Default',
+    },
+  });
+
+  assert.equal(config.os, 'windows');
+  assert.equal(config.label, 'Windows');
+  assert.equal(config.identifiers.clientType, 'windows');
+  assert.equal(config.paths.appPath, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\ima.exe');
+  assert.equal(config.paths.profileDir, 'C:\\Users\\example\\AppData\\Roaming\\ima.copilot\\Default');
+  assert.equal(config.capabilities.uiTransport, false);
+  assert.equal(config.capabilities.apiCookieDecryption, false);
+  assert.equal(config.capabilities.webContentsLaunch, false);
+  assert.ok(config.pending.some((item) => item.includes('CDP launch')));
+});
+
+test('normalizePlatform maps Node platform ids to adapter names', () => {
+  assert.equal(normalizePlatform('darwin'), 'macos');
+  assert.equal(normalizePlatform('win32'), 'windows');
+  assert.equal(normalizePlatform('linux'), 'unsupported');
+});
