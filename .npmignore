@@ -1,0 +1,12 @@
+node_modules/
+test/
+
+# Generated root command files are rebuilt by OpenCLI during plugin install.
+ask.js
+dump.js
+kb.js
+setup.js
+status.js
+
+.DS_Store
+*.tgz

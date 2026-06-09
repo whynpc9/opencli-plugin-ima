@@ -1,0 +1,167 @@
+import assert from 'node:assert/strict';
+import { afterEach, beforeEach, test } from 'node:test';
+import { askImaApi, listKnowledgeBases } from '../lib/api.js';
+
+const REQUIRED_COOKIE = [
+  'IMA-UID=user-1',
+  'IMA-TOKEN=token-1',
+  'IMA-REFRESH-TOKEN=refresh-1',
+  'UID-TYPE=1',
+  'TOKEN-TYPE=1',
+  'WEB-VERSION=4.28.6',
+].join('; ');
+
+let originalFetch;
+let originalEnv;
+
+beforeEach(() => {
+  originalFetch = globalThis.fetch;
+  originalEnv = { ...process.env };
+  process.env.IMA_COOKIE = REQUIRED_COOKIE;
+  process.env.IMA_API_BASE = 'https://ima.qq.com/cgi-bin';
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  process.env = originalEnv;
+});
+
+test('listKnowledgeBases searches with frontend-compatible support types', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body), headers: options.headers });
+    return jsonResponse({
+      code: 0,
+      searched_knowledge_bases: [
+        { knowledge_base_id: 'kb-search-1', basic_info: { name: '我的知识库' }, new_type: 1001 },
+      ],
+      is_end: true,
+    });
+  };
+
+  const rows = await listKnowledgeBases({ query: '我的知识库', limit: 10, maxPages: 1 });
+
+  assert.deepEqual(rows, [
+    { id: 'kb-search-1', name: '我的知识库', type: 1001, creator: '' },
+  ]);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://ima.qq.com/cgi-bin/knowledge_tab_reader/search_knowledge_base');
+  assert.deepEqual(calls[0].body, {
+    query: '我的知识库',
+    cursor: '',
+    limit: 10,
+    policy: 1,
+    support_types: [1001, 1002, 1004, 1005],
+  });
+  assert.equal(calls[0].headers.from_browser_ima, '1');
+  assert.match(calls[0].headers['x-ima-cookie'], /IMA-TOKEN=token-1/);
+  assert.match(calls[0].headers['x-ima-bkn'], /^\d+$/);
+});
+
+test('listKnowledgeBases lists grouped knowledge bases and paginates unfinished groups', async () => {
+  const calls = [];
+  const responses = [
+    {
+      code: 0,
+      list: [
+        {
+          type: 1001,
+          next_cursor: 'cursor-2',
+          is_end: false,
+          list: [{ id: 'kb-mine-1', basic_info: { name: 'Mine One' }, new_type: 1001 }],
+        },
+        {
+          type: 1002,
+          next_cursor: '',
+          is_end: true,
+          list: [{ knowledge_base_id: 'kb-shared-1', name: 'Shared One', new_type: 1002 }],
+        },
+      ],
+    },
+    {
+      code: 0,
+      list: [
+        {
+          type: 1001,
+          next_cursor: '',
+          is_end: true,
+          list: [{ knowledgeBaseId: 'kb-mine-2', basicInfo: { name: 'Mine Two' }, newType: 1001 }],
+        },
+      ],
+    },
+  ];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) });
+    return jsonResponse(responses.shift());
+  };
+
+  const rows = await listKnowledgeBases({ limit: 20, maxPages: 3 });
+
+  assert.deepEqual(rows.map((row) => [row.id, row.name, row.type]), [
+    ['kb-mine-1', 'Mine One', 1001],
+    ['kb-shared-1', 'Shared One', 1002],
+    ['kb-mine-2', 'Mine Two', 1001],
+  ]);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].body, {
+    params: [
+      { type: 1001, cursor: '', limit: 20 },
+      { type: 1002, cursor: '', limit: 20 },
+      { type: 1004, cursor: '', limit: 20 },
+      { type: 1005, cursor: '', limit: 20 },
+    ],
+  });
+  assert.deepEqual(calls[1].body, {
+    params: [{ type: 1001, cursor: 'cursor-2', limit: 20 }],
+  });
+});
+
+test('askImaApi sends one QA request and joins streamed MESSAGE events', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body), headers: options.headers });
+    return sseResponse([
+      { event: 'MESSAGE', data: { Text: '第一段' } },
+      { event: 'MESSAGE', data: { text: '，第二段。' } },
+      { event: 'CONTEXT_REFERENCES', data: { list: [{ id: 'ref-1' }, { id: 'ref-2' }] } },
+      { event: 'COMPLETED', data: { Code: 0 } },
+    ]);
+  };
+
+  const result = await askImaApi({
+    question: '请总结',
+    kbId: 'kb-direct-1',
+    timeout: 5,
+  });
+
+  assert.equal(result.status, 'success');
+  assert.equal(result.knowledgeBaseId, 'kb-direct-1');
+  assert.equal(result.answer, '第一段，第二段。');
+  assert.equal(result.referencesFound, 2);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://ima.qq.com/cgi-bin/assistant_nl/knowledge_base_qa');
+  assert.deepEqual(calls[0].body, {
+    knowledge_base_id: 'kb-direct-1',
+    question: '请总结',
+    model_info: { model_type: 3, model_id: 'official_3' },
+    channel_id: '',
+  });
+  assert.equal(calls[0].headers.accept, 'text/event-stream');
+});
+
+function jsonResponse(body) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function sseResponse(events) {
+  const body = events
+    .map(({ event, data }) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+    .join('');
+  return new Response(body, {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' },
+  });
+}

@@ -1,0 +1,6 @@
+{
+  "name": "ima",
+  "version": "0.1.0",
+  "opencli": ">=1.8.0",
+  "description": "Ask ima.copilot questions against a selected knowledge base"
+}

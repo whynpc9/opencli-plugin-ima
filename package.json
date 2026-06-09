@@ -1,0 +1,39 @@
+{
+  "name": "opencli-plugin-ima",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "OpenCLI plugin for one-shot Q&A against ima.copilot knowledge bases",
+  "license": "MIT",
+  "keywords": [
+    "opencli",
+    "opencli-plugin",
+    "ima",
+    "copilot"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "opencli-plugin.json",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "DEVELOPMENT.md",
+    "*.ts",
+    "lib/**/*.js",
+    "docs/**/*.md",
+    "scripts/*.mjs"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "clean": "node scripts/clean.mjs",
+    "check": "npm test",
+    "test": "npm run build && node --test"
+  },
+  "peerDependencies": {
+    "@jackwener/opencli": ">=1.8.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  }
+}
