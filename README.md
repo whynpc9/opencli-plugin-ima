@@ -18,12 +18,20 @@ opencli ima ask "请总结这个知识库" --kb "我的知识库" -f json
 
 This is designed for one question and one answer. It does not try to manage multi-turn conversations.
 
+For API calls that fail with ima business error `600001`, the plugin also exposes an explicit experimental WebContents transport. It runs the same frontend API call inside ima.copilot's real Chromium page so native bridge account/device headers come from the app itself:
+
+```bash
+opencli ima kb --transport webcontents -f json
+```
+
 ## Tested Baseline
 
 - ima.copilot app: `147.0.7727.4575` (`CFBundleVersion: 7727.4575`)
 - macOS app path: `/Applications/ima.copilot.app`
 - Bundle id observed during development: `com.tencent.imamac`
-- Supported workflow verified: one question against one selected knowledge base through UI transport; API transport is implemented but still treated as experimental.
+- Supported workflow verified: one question against one selected knowledge base through UI transport.
+- WebContents transport verified: knowledge-base list, document list, and one-shot Q&A return success from the real ima page context.
+- API transport is implemented but still treated as experimental for real app runs because it can return `600001`.
 
 ## Install
 
@@ -48,7 +56,9 @@ opencli plugin install github:whynpc9/opencli-plugin-ima
 | --- | --- | --- |
 | `opencli ima setup [--activate]` | read | Check app, Accessibility, API cookie, and Keychain readiness. |
 | `opencli ima status` | read | Summarize current ima.copilot window and API login state. |
-| `opencli ima kb [--query <name>]` | read | List or search knowledge bases through the API path. |
+| `opencli ima kb [--query <name>] [--transport api\|webcontents]` | read | List or search knowledge bases. |
+| `opencli ima ls --kb <name> [--path <folder>]` | read | List documents and folders in a knowledge base path; API first with UI fallback, or explicit WebContents. |
+| `opencli ima export <document> [--output <path>]` | read | Download a document by title or mediaId. |
 | `opencli ima ask <question> --kb <name>` | write | Ask one question against a named knowledge base. |
 | `opencli ima ask <question> --kb-id <id>` | write | Ask by API knowledge-base id; no UI fallback unless `--kb` is also provided. |
 | `opencli ima dump [--output <file>]` | read | Dump the macOS Accessibility tree for selector debugging. |
@@ -73,12 +83,63 @@ Force direct API, useful when you already know the knowledge-base id:
 opencli ima ask "请总结这个知识库" --kb-id "<KnowledgeBaseId>" --transport api -f json
 ```
 
+Force experimental WebContents API execution inside ima.copilot:
+
+```bash
+opencli ima ask "请总结这个知识库" --kb-id "<KnowledgeBaseId>" --transport webcontents -f json
+```
+
+### Document Examples
+
+List the root of a knowledge base:
+
+```bash
+opencli ima ls --kb "我的知识库" -f json
+```
+
+List a subfolder:
+
+```bash
+opencli ima ls --kb-id "<KnowledgeBaseId>" --path "资料目录/子目录" -f json
+```
+
+List through ima.copilot's real WebContents:
+
+```bash
+opencli ima ls --kb-id "<KnowledgeBaseId>" --transport webcontents -f json
+```
+
+Force UI fallback against the currently visible ima.copilot knowledge-base page:
+
+```bash
+opencli ima ls --transport ui -f json
+```
+
+Download by title. `auto` tries direct API first, then falls back to a local preview URL if the document has been opened in ima.copilot before:
+
+```bash
+opencli ima export "示例文档.pdf" --kb "我的知识库" --output ~/Downloads -f json
+```
+
+Download by mediaId:
+
+```bash
+opencli ima export --media-id "<MediaId>" --output ~/Downloads/example.pdf -f json
+```
+
+Download after resolving the document URL in ima.copilot's real WebContents:
+
+```bash
+opencli ima export --media-id "<MediaId>" --kb-id "<KnowledgeBaseId>" --transport webcontents --output ~/Downloads/example.pdf -f json
+```
+
 ## Runtime Requirements
 
 - macOS with `/Applications/ima.copilot.app` installed.
 - ima.copilot is logged in. The currently tested app version is `147.0.7727.4575`.
 - macOS Accessibility permission for the terminal/OpenCLI process if UI transport is used.
 - macOS Keychain access for `ima.copilot Safe Storage` if API transport decrypts local cookies.
+- Node.js runtime with a global `WebSocket` implementation if WebContents transport is used. Node.js 22+ is recommended.
 
 ## Environment Variables
 
@@ -93,6 +154,8 @@ opencli ima ask "请总结这个知识库" --kb-id "<KnowledgeBaseId>" --transpo
 | `IMA_API_ENDPOINT` | Override `assistant_nl/knowledge_base_qa`. |
 | `IMA_EXTENSION_VERSION` | Override extension version header. |
 | `IMA_GUID` / `IMA_Q36` / `IMA_IUA` | Override device cookie fields during API experiments. |
+| `IMA_WEBCONTENTS_CDP_PORT` | Override the local CDP port used by WebContents transport. Defaults to `9227`. |
+| `IMA_WEBCONTENTS_LAUNCH` | Set to `0` to require an already-running CDP-enabled ima.copilot instead of launching one. |
 
 ## Development
 
@@ -116,7 +179,11 @@ kb.ts                      Knowledge-base listing/search command
 setup.ts                   Local readiness check
 status.ts                  Runtime status summary
 dump.ts                    Accessibility tree dump command
+ls.ts                      Knowledge-base document listing command
+export.ts                  Knowledge-base document export command
 lib/api.js                 Direct ima API transport
+lib/webcontents.js         API execution inside ima.copilot's real Chromium WebContents
+lib/documents.js           Local preview URL extraction and file download helpers
 lib/ax.js                  Swift Accessibility UI transport
 test/*.test.js             Unit and command registration tests
 docs/                      Experiment notes and implementation evidence
@@ -128,11 +195,12 @@ For real app validation and release steps, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Strategy Note
 
-Strategy: `LOCAL` plus direct ima API, with macOS Accessibility UI fallback.
+Strategy: `LOCAL` plus direct ima API, explicit real-WebContents API execution, and macOS Accessibility UI fallback.
 
 Contract:
 
 - API path: local ima login state, local Chromium Cookie DB, and ima frontend API endpoints.
+- WebContents path: local CDP connection to ima.copilot, native `chrome.imaFrame` bridge calls for account/device headers, and browser `fetch` from the real app page.
 - UI path: visible ima.copilot knowledge-base UI, question composer, and generated answer text.
 
 Evidence:
@@ -144,13 +212,22 @@ Evidence:
   - `assistant_nl/knowledge_base_qa`
 - API requests need `x-ima-cookie`, `from_browser_ima`, `extension_version`, and `x-ima-bkn`.
 - API can currently return `600001` even when local cookies are present; UI fallback has completed the target workflow.
+- WebContents API execution has returned successful knowledge-base list responses in the real app context where direct Node API returned `600001`.
+- WebContents document listing has also returned rows from the real app context.
+- WebContents Q&A succeeds when it follows the frontend session path: `session_logic/init_session` followed by `assistant/qa`.
 
 ## Known Limits
 
 - UI transport operates the real ima.copilot app and may create visible Q&A history.
+- WebContents transport may quit and relaunch ima.copilot with local CDP enabled if no CDP endpoint is already available.
+- WebContents transport opens a local debugging port. Use it only in a trusted local desktop session.
+- `ima ask --transport webcontents` creates a real ima Q&A session and may leave visible history in the local app account.
 - UI transport requires the target knowledge-base name to be visible/selectable in the current ima UI.
 - `ReferencesFound` on UI transport is best-effort and may be affected by UI text structure.
 - Direct API transport still needs more work around native bridge refresh/device/crypto context before it can be the only transport.
+- `ima ls` API transport depends on `knowledge_tab_reader/get_knowledge_list`; in the current real environment this endpoint can return `600001`.
+- `ima ls` UI fallback reads the visible ima.copilot list through macOS Accessibility when Chromium exposes the WebArea content. It cannot verify `--kb-id`; use `--kb` or switch ima.copilot to the target knowledge base before `--transport ui`.
+- `ima export --transport recent` can only download documents whose preview URL is already present in the local ima.copilot profile, usually after opening the document once in the app.
 
 See [docs/ima-copilot-call-experiments.md](docs/ima-copilot-call-experiments.md) for the anonymized experiment log.
 

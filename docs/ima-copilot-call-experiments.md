@@ -21,6 +21,7 @@ IMA_KEYCHAIN_TIMEOUT_MS=30000 opencli ima ask "业务问题B" --kb "业务知识
 当前判断：
 
 - 直接 API 路径可以读取本地登录态和 Cookie，但在当前环境持续返回 `600001`，无法单独完成知识库列表和问答。
+- WebContents 路径已经验证可以在真实 ima 页面上下文中成功调用知识库列表、文档列表和一问一答 API，说明 native bridge 页面态可以补足直接 Node API 缺失的上下文。
 - ima 原生 UI 路径可以完成目标场景，但它会真实操作本机 ima.copilot，并在 ima 里留下问答历史。
 - OpenCLI 插件目前已经将 UI 路径接入 `ask` 命令作为 fallback。
 
@@ -44,11 +45,68 @@ IMA_KEYCHAIN_TIMEOUT_MS=30000 opencli ima ask "业务问题B" --kb "业务知识
 
 | 路径 | 目标 | 结果 | 结论 |
 | --- | --- | --- | --- |
-| CDP / remote debugging | 通过 DevTools 协议控制 WebView | 未发现可用调试端口 | 当前不作为主路径 |
+| CDP / remote debugging | 通过 DevTools 协议控制 WebContents | 需要非默认 `--user-data-dir` 和 `TencentRemoteDebugSwitch` feature flag | 可作为显式实验路径 |
+| WebContents API | 在真实 ima 页面内执行前端 API | 知识库列表、文档列表、一问一答接口返回成功 | 可绕过直接 Node API 的 `600001`，已接入显式 transport |
 | 直接 API + 本地 Cookie | 调 `knowledge_tab_reader/*` 和 `assistant_nl/knowledge_base_qa` | 登录态可读，但接口返回 `600001` | 可保留为优先尝试，但当前环境不可单独完成 |
 | Computer Use | 直接操作 ima UI | 成功选择知识库、输入问题、读取答案 | 证明 UI 路径可行 |
 | Swift Accessibility | 在 OpenCLI 插件内本地操作 UI | 成功完成一问一答 | 当前 fallback 实现 |
 | OpenCLI 命令入口 | `opencli ima ask --kb ...` | 成功，`Transport: ui` | 当前用户场景已跑通 |
+
+## WebContents API 路径
+
+实现位置：
+
+- `lib/webcontents.js`
+- `kb.ts` / `kb.js`
+- `ask.ts` / `ask.js`
+- `ls.ts` / `ls.js`
+- `export.ts` / `export.js`
+
+关键发现：
+
+- ima.copilot 是 Chromium app，而不是 Electron app。
+- 普通 `--remote-debugging-port` 不会暴露可用 CDP。
+- app 内存在 `TencentRemoteDebugSwitch` 相关开关；启动时需要 `--enable-features=TencentRemoteDebugSwitch`。
+- Chromium 还要求 remote debugging 使用非默认 `--user-data-dir`。
+- 使用临时 `--user-data-dir` 可以打开 CDP，但没有真实登录态。
+- 使用临时符号链接指向本机 ima profile 所在目录，可以让 CDP WebContents 复用真实登录态，同时不复制 profile 文件。
+
+已验证 bridge：
+
+- `chrome.imaFrame.invokeWithCallback` 可用。
+- `getDeviceInfo` 可返回设备标识、guid、q36、qua 等字段。
+- `getAccountInfo` 在真实 profile 中返回已登录状态，并能提供构造请求头所需字段。
+
+已验证 API：
+
+```text
+knowledge_tab_reader/get_knowledge_base_list -> HTTP 200, code=0
+knowledge_tab_reader/get_knowledge_list -> HTTP 200, returned document/folder rows
+session_logic/init_session -> HTTP 200, returned session id
+assistant/qa -> HTTP 200, returned SSE MESSAGE answer
+```
+
+该结果发生在真实 ima WebContents 中；同一类知识库接口在直接 Node API 调用中曾返回 `600001`。因此当前判断是：`600001` 主要与缺少真实页面 native bridge 和前端会话上下文有关，而不是单纯缺 Cookie。
+
+问答路径对齐过程：
+
+```text
+assistant_nl/knowledge_base_qa -> SSE opened, COMPLETED event returned ima business failure
+assistant_nl/operation_qa -> SSE opened, COMPLETED event returned ima business failure
+真实前端请求 -> session_logic/init_session + assistant/qa
+复现真实前端请求 -> success, answer returned
+```
+
+当前判断：Q&A 不能只把旧直接 API 的 `assistant_nl/knowledge_base_qa` 放进 WebContents 执行；必须按真实前端先创建 session，再调用 `assistant/qa`。
+
+当前插件接入：
+
+- `opencli ima kb --transport webcontents`
+- `opencli ima ask --transport webcontents`
+- `opencli ima ls --transport webcontents`
+- `opencli ima export --transport webcontents`
+
+`webcontents` 暂时不进入默认 `auto` 策略，因为它可能退出并重启 ima.copilot，同时会开启本地 CDP 端口。用户需要显式选择该 transport。
 
 ## 直接 API 路径
 
@@ -131,7 +189,7 @@ fallback get_home_page_data failed: ima API knowledge_tab_reader/get_home_page_d
 问题：
 
 ```text
-请用一句话回答：这个知识库主要关于什么？
+通用问题A
 ```
 
 结果：

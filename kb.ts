@@ -1,6 +1,7 @@
 import { cli, Strategy } from '@jackwener/opencli/registry';
 import { ArgumentError, CommandExecutionError, EmptyResultError } from '@jackwener/opencli/errors';
 import { listKnowledgeBases } from './lib/api.js';
+import { listKnowledgeBasesWebContents } from './lib/webcontents.js';
 
 export const kbCommand = cli({
   site: 'ima',
@@ -12,6 +13,7 @@ export const kbCommand = cli({
   browser: false,
   args: [
     { name: 'query', required: false, help: 'Knowledge base name to search' },
+    { name: 'transport', default: 'api', choices: ['api', 'webcontents'], help: 'Transport: api or webcontents (default: api)' },
     { name: 'limit', type: 'int', default: 20, help: 'Maximum rows to return (default: 20)' },
   ],
   columns: ['Name', 'KnowledgeBaseId', 'Type', 'Creator'],
@@ -22,7 +24,12 @@ export const kbCommand = cli({
     }
 
     try {
-      const rows = await listKnowledgeBases({
+      const transport = String(kwargs.transport || 'api').trim().toLowerCase();
+      if (!['api', 'webcontents'].includes(transport)) {
+        throw new ArgumentError('Transport must be one of: api, webcontents.');
+      }
+      const list = transport === 'webcontents' ? listKnowledgeBasesWebContents : listKnowledgeBases;
+      const rows = await list({
         query: String(kwargs.query || '').trim(),
         limit,
         maxPages: 2,

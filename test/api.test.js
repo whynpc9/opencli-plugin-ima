@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
-import { askImaApi, listKnowledgeBases } from '../lib/api.js';
+import { askImaApi, listKnowledgeBases, listKnowledgeDocuments } from '../lib/api.js';
 
 const REQUIRED_COOKIE = [
   'IMA-UID=user-1',
@@ -114,6 +114,67 @@ test('listKnowledgeBases lists grouped knowledge bases and paginates unfinished 
   assert.deepEqual(calls[1].body, {
     params: [{ type: 1001, cursor: 'cursor-2', limit: 20 }],
   });
+});
+
+test('listKnowledgeDocuments sends frontend-compatible folder listing payload', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body), headers: options.headers });
+    return jsonResponse({
+      code: 0,
+      knowledge_list: [
+        {
+          media_id: 'pdf_media_1',
+          title: '示例文档.pdf',
+          media_type: 3,
+          update_time: 1710000000,
+          file_size: 12345,
+        },
+      ],
+      next_cursor: '',
+      is_end: true,
+    });
+  };
+
+  const result = await listKnowledgeDocuments({ kbId: 'kb-doc-1', limit: 10, maxPages: 1 });
+
+  assert.equal(result.knowledgeBaseId, 'kb-doc-1');
+  assert.equal(result.folderId, 'kb-doc-1');
+  assert.deepEqual(result.items.map((item) => ({
+    name: item.name,
+    mediaId: item.mediaId,
+    mediaType: item.mediaType,
+    updateTime: item.updateTime,
+    fileSize: item.fileSize,
+  })), [
+    {
+      name: '示例文档.pdf',
+      mediaId: 'pdf_media_1',
+      mediaType: 3,
+      updateTime: 1710000000,
+      fileSize: 12345,
+    },
+  ]);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://ima.qq.com/cgi-bin/knowledge_tab_reader/get_knowledge_list');
+  assert.deepEqual(calls[0].body, {
+    sort_type: 9,
+    need_default_cover: true,
+    knowledge_base_id: 'kb-doc-1',
+    folder_id: 'kb-doc-1',
+    cursor: '',
+    limit: 10,
+    version: '',
+    filters: [
+      {
+        filter_type: 1,
+        media_state_filter: {
+          media_states: [2],
+        },
+      },
+    ],
+  });
+  assert.match(calls[0].headers['x-ima-cookie'], /IMA-TOKEN=token-1/);
 });
 
 test('askImaApi sends one QA request and joins streamed MESSAGE events', async () => {

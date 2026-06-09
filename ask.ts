@@ -2,6 +2,7 @@ import { cli, Strategy } from '@jackwener/opencli/registry';
 import { ArgumentError, CommandExecutionError } from '@jackwener/opencli/errors';
 import { askImaApi } from './lib/api.js';
 import { askIma } from './lib/ax.js';
+import { askImaWebContents } from './lib/webcontents.js';
 
 export const askCommand = cli({
   site: 'ima',
@@ -15,7 +16,7 @@ export const askCommand = cli({
     { name: 'question', required: true, positional: true, help: 'Question to ask ima.copilot' },
     { name: 'kb-id', required: false, help: 'ima knowledgeBaseId to ask against' },
     { name: 'kb', required: false, help: 'Knowledge base name to ask against. Required for UI fallback.' },
-    { name: 'transport', default: 'auto', choices: ['auto', 'api', 'ui'], help: 'Transport: auto, api, or ui (default: auto)' },
+    { name: 'transport', default: 'auto', choices: ['auto', 'api', 'webcontents', 'ui'], help: 'Transport: auto, api, webcontents, or ui (default: auto)' },
     { name: 'timeout', type: 'int', default: 120, help: 'Max seconds to wait for the answer (default: 120)' },
   ],
   columns: ['Status', 'Transport', 'KnowledgeBase', 'KnowledgeBaseId', 'Question', 'Answer', 'ReferencesFound'],
@@ -33,10 +34,33 @@ export const askCommand = cli({
     const kbId = String(kwargs['kb-id'] || '').trim();
     const kb = String(kwargs.kb || '').trim();
     const transport = String(kwargs.transport || 'auto').trim().toLowerCase();
-    if (!['auto', 'api', 'ui'].includes(transport)) {
-      throw new ArgumentError('Transport must be one of: auto, api, ui.');
+    if (!['auto', 'api', 'webcontents', 'ui'].includes(transport)) {
+      throw new ArgumentError('Transport must be one of: auto, api, webcontents, ui.');
     }
     let apiError = null;
+
+    if (transport === 'webcontents') {
+      try {
+        const result = await askImaWebContents({
+          question,
+          kbId,
+          kb,
+          timeout,
+        });
+        return [{
+          Status: result.status || 'success',
+          Transport: 'webcontents',
+          KnowledgeBase: result.knowledgeBase || '',
+          KnowledgeBaseId: result.knowledgeBaseId || '',
+          Question: result.question || question,
+          Answer: result.answer || '',
+          ReferencesFound: result.referencesFound ?? '',
+        }];
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new CommandExecutionError('ima/ask failed', message);
+      }
+    }
 
     if (transport !== 'ui') {
       try {

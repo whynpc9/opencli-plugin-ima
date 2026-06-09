@@ -6,6 +6,8 @@ const entryPoints = [
   'setup.ts',
   'status.ts',
   'dump.ts',
+  'ls.ts',
+  'export.ts',
 ];
 
 await build({
