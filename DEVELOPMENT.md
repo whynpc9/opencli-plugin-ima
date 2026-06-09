@@ -37,4 +37,4 @@ The UI transport controls the foreground ima.copilot app and may create visible 
 2. Confirm `README.md` lists the tested ima.copilot version.
 3. Run `npm test`.
 4. Run `npm pack --dry-run` and confirm the tarball only includes plugin source, runtime libraries, scripts, and documentation.
-5. Replace the README GitHub install placeholder with the published repository owner.
+5. Confirm the README GitHub install command points at the published repository.

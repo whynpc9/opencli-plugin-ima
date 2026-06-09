@@ -39,7 +39,7 @@ opencli ima setup --activate
 After publishing to GitHub:
 
 ```bash
-opencli plugin install github:<user>/opencli-plugin-ima
+opencli plugin install github:whynpc9/opencli-plugin-ima
 ```
 
 ## Commands

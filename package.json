@@ -4,6 +4,14 @@
   "type": "module",
   "description": "OpenCLI plugin for one-shot Q&A against ima.copilot knowledge bases",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whynpc9/opencli-plugin-ima.git"
+  },
+  "bugs": {
+    "url": "https://github.com/whynpc9/opencli-plugin-ima/issues"
+  },
+  "homepage": "https://github.com/whynpc9/opencli-plugin-ima#readme",
   "keywords": [
     "opencli",
     "opencli-plugin",
