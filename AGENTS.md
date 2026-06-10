@@ -17,7 +17,7 @@ The current reliable runtime path is `ima ask --kb <knowledgeBaseName>` through 
 
 ## Development Rules
 
-- Keep root command files in TypeScript: `ask.ts`, `kb.ts`, `setup.ts`, `status.ts`, `dump.ts`, `ls.ts`, and `export.ts`.
+- Keep root command files in TypeScript: `ask.ts`, `kb.ts`, `kb-info.ts`, `setup.ts`, `status.ts`, `dump.ts`, `ls.ts`, and `export.ts`.
 - OpenCLI scans plugin root command files. Do not move commands under `src/` unless the install/build strategy is updated and tested.
 - Generated root `*.js` files are local build artifacts and are intentionally ignored by Git.
 - Do not add runtime dependencies on Codex Computer Use. It may be used for manual experiments, but the plugin runtime must work through OpenCLI, Node.js, local app state, and macOS Accessibility/API code.

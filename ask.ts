@@ -1,7 +1,7 @@
 import { cli, Strategy } from '@jackwener/opencli/registry';
 import { ArgumentError, CommandExecutionError } from '@jackwener/opencli/errors';
 import { askImaApi } from './lib/api.js';
-import { askIma } from './lib/ax.js';
+import { askIma, inspectIma } from './lib/ax.js';
 import { askImaWebContents } from './lib/webcontents.js';
 
 export const askCommand = cli({
@@ -38,24 +38,16 @@ export const askCommand = cli({
       throw new ArgumentError('Transport must be one of: auto, api, webcontents, ui.');
     }
     let apiError = null;
+    let uiError = null;
 
     if (transport === 'webcontents') {
       try {
-        const result = await askImaWebContents({
+        return [formatAskResult(await askImaWebContents({
           question,
           kbId,
           kb,
           timeout,
-        });
-        return [{
-          Status: result.status || 'success',
-          Transport: 'webcontents',
-          KnowledgeBase: result.knowledgeBase || '',
-          KnowledgeBaseId: result.knowledgeBaseId || '',
-          Question: result.question || question,
-          Answer: result.answer || '',
-          ReferencesFound: result.referencesFound ?? '',
-        }];
+        }), { transport: 'webcontents', question })];
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new CommandExecutionError('ima/ask failed', message);
@@ -70,15 +62,7 @@ export const askCommand = cli({
           kb,
           timeout,
         });
-        return [{
-          Status: result.status || 'success',
-          Transport: 'api',
-          KnowledgeBase: result.knowledgeBase || '',
-          KnowledgeBaseId: result.knowledgeBaseId || '',
-          Question: result.question || question,
-          Answer: result.answer || '',
-          ReferencesFound: result.referencesFound ?? '',
-        }];
+        return [formatAskResult(result, { transport: 'api', question })];
       } catch (error) {
         apiError = error instanceof Error ? error.message : String(error);
         if (transport === 'api') {
@@ -87,7 +71,44 @@ export const askCommand = cli({
       }
     }
 
-    if (kbId && !kb) {
+    if (transport === 'auto') {
+      if (kb) {
+        const state = inspectIma({ activate: true });
+        if (state.composerReady) {
+          try {
+            return [formatAskResult(askIma({ question, kb, timeout }), {
+              transport: 'ui',
+              question,
+              knowledgeBaseId: kbId,
+            })];
+          } catch (error) {
+            uiError = error instanceof Error ? error.message : String(error);
+          }
+        } else {
+          uiError = summarizeUiPreflight(state);
+        }
+      } else {
+        uiError = 'UI transport requires --kb <knowledgeBaseName>.';
+      }
+
+      try {
+        return [formatAskResult(await askImaWebContents({
+          question,
+          kbId,
+          kb,
+          timeout,
+        }), { transport: 'webcontents', question })];
+      } catch (error) {
+        const webContentsError = error instanceof Error ? error.message : String(error);
+        throw new CommandExecutionError('ima/ask failed', buildAutoFailureMessage({
+          apiError,
+          uiError,
+          webContentsError,
+        }));
+      }
+    }
+
+    if (transport === 'ui' && kbId && !kb) {
       throw new CommandExecutionError('ima/ask failed', `${apiError ? `${apiError}; ` : ''}UI transport requires --kb <knowledgeBaseName>.`);
     }
     if (!kb) {
@@ -96,15 +117,7 @@ export const askCommand = cli({
 
     try {
       const result = askIma({ question, kb, timeout });
-      return [{
-        Status: result.status || 'success',
-        Transport: 'ui',
-        KnowledgeBase: result.knowledgeBase || kb || '',
-        KnowledgeBaseId: kbId,
-        Question: result.question || question,
-        Answer: result.answer || '',
-        ReferencesFound: result.referencesFound ?? '',
-      }];
+      return [formatAskResult(result, { transport: 'ui', question, knowledgeBaseId: kbId })];
     } catch (error) {
       const uiError = error instanceof Error ? error.message : String(error);
       const prefix = apiError ? `API transport failed: ${apiError}; ` : '';
@@ -112,3 +125,39 @@ export const askCommand = cli({
     }
   },
 });
+
+function formatAskResult(result, { transport, question, knowledgeBaseId = '' }) {
+  return {
+    Status: result.status || 'success',
+    Transport: transport,
+    KnowledgeBase: result.knowledgeBase || '',
+    KnowledgeBaseId: result.knowledgeBaseId || knowledgeBaseId || '',
+    Question: result.question || question,
+    Answer: result.answer || '',
+    ReferencesFound: result.referencesFound ?? '',
+  };
+}
+
+function summarizeUiPreflight(state) {
+  if (state?.error) return `UI probe unavailable: ${state.error}`;
+  if (!state?.running) return 'UI transport skipped because ima.copilot is not running.';
+  if (state?.trusted === false) return 'UI transport skipped because Accessibility permission is not granted.';
+  if (!state?.composerReady) {
+    return `UI transport skipped because the ima question composer is not visible to Accessibility.${state?.textCount != null ? ` Accessible text nodes: ${state.textCount}.` : ''}`;
+  }
+  return 'UI transport skipped because its readiness could not be confirmed.';
+}
+
+function buildAutoFailureMessage({ apiError, uiError, webContentsError }) {
+  return [
+    apiError ? `API transport failed: ${apiError}` : '',
+    uiError ? `UI transport skipped/failed: ${uiError}` : '',
+    webContentsError ? `WebContents transport failed: ${webContentsError}` : '',
+  ].filter(Boolean).join('; ');
+}
+
+export const __test__ = {
+  buildAutoFailureMessage,
+  formatAskResult,
+  summarizeUiPreflight,
+};

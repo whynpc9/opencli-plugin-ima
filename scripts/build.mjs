@@ -3,6 +3,7 @@ import { build } from 'esbuild';
 const entryPoints = [
   'ask.ts',
   'kb.ts',
+  'kb-info.ts',
   'setup.ts',
   'status.ts',
   'dump.ts',

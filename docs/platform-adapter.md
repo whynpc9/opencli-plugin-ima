@@ -142,7 +142,8 @@ Windows UI fallback 需要补：
 
 ## 维护规则
 
-- 默认 `auto` 策略暂不改变：`ask` 仍是 direct API first，再 macOS UI fallback。
+- `ask --transport auto` 策略是 direct API first；API 失败后先用可见的 macOS UI composer；UI 不可用或失败时继续尝试 WebContents。
+- 因为 WebContents 可能重启 ima.copilot 并开启本地 CDP 端口，修改平台启动逻辑后必须做真实 app smoke。
 - 新增 Windows 支持时，优先修改 `lib/platform.js`，再少量接入 transport。
 - 不要把 Windows 发现阶段的真实路径、Cookie、Token、截图或知识库内容提交到仓库。
 - 修改平台层后至少运行：

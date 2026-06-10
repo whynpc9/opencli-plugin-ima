@@ -6,11 +6,11 @@
 
 ## 当前有效路径
 
-当前稳定方案是：通过 OpenCLI 本地命令调用插件，插件优先尝试直接 API；直接 API 不可用时，使用 macOS Accessibility 操作正在运行的 ima.copilot UI 完成一问一答。
+当前稳定方案是：通过 OpenCLI 本地命令调用插件，插件优先尝试直接 API；直接 API 不可用时，如果 macOS Accessibility 能看到 ima.copilot 问答输入框，则操作正在运行的 UI 完成一问一答；如果 UI 输入框不可见或 UI fallback 失败，则自动退回真实 WebContents 路径。
 
-当前新增实验方案是：把 API 调用搬到 ima.copilot 的真实 Chromium WebContents 中执行。这样账号、设备和 bkn 等请求头通过 ima 页面里的 `chrome.imaFrame` native bridge 获取，而不是由 Node.js 直接拼接。
+WebContents 方案会把 API 调用搬到 ima.copilot 的真实 Chromium WebContents 中执行。这样账号、设备和 bkn 等请求头通过 ima 页面里的 `chrome.imaFrame` native bridge 获取，而不是由 Node.js 直接拼接。
 
-推荐命令：
+推荐显式 UI 命令：
 
 ```bash
 opencli ima ask "请总结这个知识库" --kb "我的知识库" --transport ui --timeout 90 -f json
@@ -22,7 +22,7 @@ opencli ima ask "请总结这个知识库" --kb "我的知识库" --transport ui
 opencli ima ask "请总结这个知识库" --kb "我的知识库" --timeout 90 -f json
 ```
 
-`--transport auto` 会先调用直接 API；如果 API 返回业务鉴权错误或其他失败，并且命令提供了 `--kb`，则退回 UI transport。
+`--transport auto` 会先调用直接 API；如果 API 返回业务鉴权错误或其他失败，则检查 UI composer。composer 可见时走 UI transport；composer 不可见或 UI fallback 失败时，继续尝试 WebContents transport。
 
 显式 WebContents 调用：
 
@@ -38,8 +38,9 @@ opencli ima kb --transport webcontents -f json
 - bundle id：`com.tencent.imamac`
 - 已验证能力：基于指定知识库名称的一问一答，返回完整答案。
 - 已验证 WebContents 能力：在真实 ima 页面上下文中调用知识库列表、文档列表和一问一答 API，返回成功结果。
-- 可靠 transport：`ui`
-- 实验 transport：`api`、`webcontents`
+- 可靠 transport：`webcontents`
+- fallback transport：`ui`
+- 实验 transport：`api`
 
 ## UI Transport 实现方法
 
@@ -52,7 +53,7 @@ opencli ima kb --transport webcontents -f json
 
 1. 通过 `ask.ts` 注册 `ima ask` OpenCLI 命令。
 2. 用户传入问题和知识库名称：`opencli ima ask "<question>" --kb "<knowledgeBaseName>"`。
-3. `ask.ts` 在 `--transport ui` 或 API fallback 时调用 `askIma`。
+3. `ask.ts` 在 `--transport ui` 或 `auto` 且 UI composer 可见时调用 `askIma`。
 4. `lib/ax.js` 激活本机 ima.copilot app。
 5. 通过 Swift Accessibility 脚本读取当前窗口树。
 6. 按可见知识库名称点击左侧知识库。
@@ -117,7 +118,8 @@ WebContents transport 还需要：
 
 当前限制：
 
-- `webcontents` 目前为显式 transport，不参与默认 `auto`，避免用户无感知重启 ima.copilot 或开启 CDP 端口。
+- `webcontents` 目前会参与 `ask --transport auto` 的后段 fallback：API 失败且 UI composer 不可见，或 UI fallback 失败时会尝试 WebContents。
+- 因此默认 `ask` 在 API/UI 都不可用时，可能退出并重启 ima.copilot，也可能开启本地 CDP 端口。
 - 如果 CDP 不可达，该 transport 可能退出并重启 ima.copilot。
 - 已实测知识库列表、文档列表和一问一答成功；导出的命令路径已经接入，但仍需要更多真实 app 样本验证。
 
@@ -127,6 +129,7 @@ WebContents transport 还需要：
 
 - `lib/api.js`
 - `kb.ts`
+- `kb-info.ts`
 - `ask.ts`
 
 已实现能力：
@@ -135,6 +138,7 @@ WebContents transport 还需要：
 - 通过 Keychain 解密 Chromium Cookie。
 - 构造 ima 前端 API 所需请求头。
 - 搜索/枚举知识库。
+- 归一化并展示知识库详细元数据。
 - 按知识库目录读取文档列表的命令接口。
 - 调用 `assistant_nl/knowledge_base_qa` 并解析 SSE 响应。
 
@@ -200,8 +204,8 @@ opencli ima export "示例文档.pdf" --kb "我的知识库" --output ~/Download
 ## 错误处理约定
 
 - 如果用户强制 `--transport api`，API 失败时直接报错，不退回 UI。
-- 如果用户使用 `--transport auto`，API 失败后只有在提供 `--kb` 时才能退回 UI。
-- 如果只提供 `--kb-id`，UI fallback 不可用，因为 UI 只能按可见知识库名称选择。
+- 如果用户使用 `--transport auto`，API 失败后会优先尝试可用 UI；如果 UI 不可用或只提供 `--kb-id`，会继续尝试 WebContents。
+- 如果只提供 `--kb-id`，UI fallback 不可用，因为 UI 只能按可见知识库名称选择；但 WebContents fallback 可以继续使用 `--kb-id`。
 - 如果目标知识库不在当前 UI 可见区域，UI transport 可能失败。
 - UI transport 会真实操作 ima.copilot，并可能留下问答历史。
 

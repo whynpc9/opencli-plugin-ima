@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
-import { askImaApi, listKnowledgeBases, listKnowledgeDocuments } from '../lib/api.js';
+import { askImaApi, listKnowledgeBases, listKnowledgeDocuments, normalizeKnowledgeBase } from '../lib/api.js';
 
 const REQUIRED_COOKIE = [
   'IMA-UID=user-1',
@@ -41,7 +41,12 @@ test('listKnowledgeBases searches with frontend-compatible support types', async
 
   const rows = await listKnowledgeBases({ query: '我的知识库', limit: 10, maxPages: 1 });
 
-  assert.deepEqual(rows, [
+  assert.deepEqual(rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    creator: row.creator,
+  })), [
     { id: 'kb-search-1', name: '我的知识库', type: 1001, creator: '' },
   ]);
   assert.equal(calls.length, 1);
@@ -113,6 +118,45 @@ test('listKnowledgeBases lists grouped knowledge bases and paginates unfinished 
   });
   assert.deepEqual(calls[1].body, {
     params: [{ type: 1001, cursor: 'cursor-2', limit: 20 }],
+  });
+});
+
+test('normalizeKnowledgeBase extracts optional detail metadata', () => {
+  const row = normalizeKnowledgeBase({
+    knowledge_base_id: 'kb-info-1',
+    name: 'Knowledge One',
+    desc: 'Shared internal notes',
+    new_type: 1001,
+    type_name: 'Mine',
+    role: 'owner',
+    visibility: 'private',
+    basic_info: {
+      creator: { nickname: 'Owner', user_id: 'user-1' },
+      create_time: 1710000000,
+      update_time: 1710003600,
+    },
+    stat_info: {
+      media_count: 12,
+      folder_count: 3,
+      member_count: 2,
+    },
+  });
+
+  assert.deepEqual(row, {
+    id: 'kb-info-1',
+    name: 'Knowledge One',
+    description: 'Shared internal notes',
+    type: 1001,
+    typeName: 'Mine',
+    creator: 'Owner',
+    ownerId: 'user-1',
+    role: 'owner',
+    visibility: 'private',
+    documentCount: 12,
+    folderCount: 3,
+    memberCount: 2,
+    createTime: 1710000000,
+    updateTime: 1710003600,
   });
 });
 

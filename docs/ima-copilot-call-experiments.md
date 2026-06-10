@@ -46,7 +46,7 @@ IMA_KEYCHAIN_TIMEOUT_MS=30000 opencli ima ask "业务问题B" --kb "业务知识
 | 路径 | 目标 | 结果 | 结论 |
 | --- | --- | --- | --- |
 | CDP / remote debugging | 通过 DevTools 协议控制 WebContents | 需要非默认 `--user-data-dir` 和 `TencentRemoteDebugSwitch` feature flag | 可作为显式实验路径 |
-| WebContents API | 在真实 ima 页面内执行前端 API | 知识库列表、文档列表、一问一答接口返回成功 | 可绕过直接 Node API 的 `600001`，已接入显式 transport |
+| WebContents API | 在真实 ima 页面内执行前端 API | 知识库列表、文档列表、一问一答接口返回成功 | 可绕过直接 Node API 的 `600001`，已接入显式 transport 和 `ask auto` 后段 fallback |
 | 直接 API + 本地 Cookie | 调 `knowledge_tab_reader/*` 和 `assistant_nl/knowledge_base_qa` | 登录态可读，但接口返回 `600001` | 可保留为优先尝试，但当前环境不可单独完成 |
 | Computer Use | 直接操作 ima UI | 成功选择知识库、输入问题、读取答案 | 证明 UI 路径可行 |
 | Swift Accessibility | 在 OpenCLI 插件内本地操作 UI | 成功完成一问一答 | 当前 fallback 实现 |
@@ -102,11 +102,12 @@ assistant_nl/operation_qa -> SSE opened, COMPLETED event returned ima business f
 当前插件接入：
 
 - `opencli ima kb --transport webcontents`
+- `opencli ima kb-info --transport webcontents`
 - `opencli ima ask --transport webcontents`
 - `opencli ima ls --transport webcontents`
 - `opencli ima export --transport webcontents`
 
-`webcontents` 暂时不进入默认 `auto` 策略，因为它可能退出并重启 ima.copilot，同时会开启本地 CDP 端口。用户需要显式选择该 transport。
+`webcontents` 已进入 `ask --transport auto` 的后段 fallback：直接 API 失败后，如果 UI composer 不可见或 UI fallback 失败，则继续尝试 WebContents。该路径仍可能退出并重启 ima.copilot，同时会开启本地 CDP 端口。
 
 ## 直接 API 路径
 
@@ -260,8 +261,9 @@ opencli ima ask "<question>" --kb "<knowledgeBaseName>" --timeout 90 -f json
 
 1. 调 `askImaApi`。
 2. 如果 API 成功，返回 `Transport: api`。
-3. 如果 API 失败且提供了 `--kb`，调用 `askIma` UI fallback。
-4. 如果只提供 `--kb-id` 且 API 失败，不做 UI fallback，因为 UI 只能按可见知识库名称选择。
+3. 如果 API 失败且提供了 `--kb`，先检查 UI composer；composer 可见时调用 `askIma` UI fallback。
+4. 如果 UI composer 不可见、UI fallback 失败，或只提供了 `--kb-id`，继续调用 `askImaWebContents`。
+5. 如果 WebContents 也失败，错误中同时包含 API、UI 和 WebContents 的失败上下文。
 
 实际验证：
 
@@ -306,7 +308,7 @@ IMA_KEYCHAIN_TIMEOUT_MS=30000 opencli ima ask "业务问题B" --kb "业务知识
 
 短期：
 
-- 保持 `ask --kb` 的 API 优先、UI fallback 策略。
+- 保持 `ask --kb` 的 API 优先策略，但在 UI composer 不可见时自动退回 WebContents。
 - 在 README 中明确 UI fallback 的副作用：会操作真实 ima UI，并留下问答历史。
 - 为 UI fallback 增加更可靠的当前知识库确认逻辑，避免误选或未切换。
 - 将 `ReferencesFound` 标记为 best-effort，或先从 UI 输出中移除。
@@ -323,7 +325,7 @@ IMA_KEYCHAIN_TIMEOUT_MS=30000 opencli ima ask "业务问题B" --kb "业务知识
 
 长期：
 
-- 给 OpenCLI 插件增加 transport 参数，例如 `--transport auto|api|ui`。
+- 继续保留 transport 参数，例如 `--transport auto|api|webcontents|ui`，用于问题定位和用户显式选择。
 - 增加 UI 集成测试脚本，覆盖：
   - 知识库切换
   - 输入框定位

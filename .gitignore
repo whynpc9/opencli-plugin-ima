@@ -6,6 +6,7 @@ node_modules/
 ask.js
 dump.js
 export.js
+kb-info.js
 kb.js
 ls.js
 setup.js

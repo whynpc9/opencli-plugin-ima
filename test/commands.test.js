@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { getRegistry } from '@jackwener/opencli/registry';
 
+import { __test__ as askTest } from '../ask.js';
+import { __test__ as kbInfoTest } from '../kb-info.js';
 import '../ask.js';
 import '../kb.js';
+import '../kb-info.js';
 import '../setup.js';
 import '../status.js';
 import '../dump.js';
@@ -12,7 +15,7 @@ import '../export.js';
 
 test('registers the complete ima command surface', () => {
   const registry = getRegistry();
-  const expected = ['ask', 'kb', 'setup', 'status', 'dump', 'ls', 'export'];
+  const expected = ['ask', 'kb', 'kb-info', 'setup', 'status', 'dump', 'ls', 'export'];
 
   for (const name of expected) {
     const command = registry.get(`ima/${name}`);
@@ -56,6 +59,54 @@ test('kb command exposes direct and WebContents transports', () => {
   assert.equal(args.get('transport')?.default, 'api');
 });
 
+test('kb-info command exposes detailed knowledge-base listing arguments', () => {
+  const command = getRegistry().get('ima/kb-info');
+  assert.deepEqual(command.columns, [
+    'Name',
+    'KnowledgeBaseId',
+    'Type',
+    'TypeName',
+    'Creator',
+    'OwnerId',
+    'Role',
+    'Visibility',
+    'DocumentCount',
+    'FolderCount',
+    'MemberCount',
+    'CreatedAt',
+    'UpdatedAt',
+    'Description',
+  ]);
+
+  const args = new Map(command.args.map((arg) => [arg.name, arg]));
+  assert.deepEqual(args.get('transport')?.choices, ['api', 'webcontents']);
+  assert.equal(args.get('transport')?.default, 'webcontents');
+  assert.equal(args.get('limit')?.default, 100);
+  assert.equal(args.get('max-pages')?.default, 20);
+});
+
+test('kb-info formatter renders counts and timestamps', () => {
+  const row = kbInfoTest.formatKnowledgeBaseInfo({
+    id: 'kb-info-1',
+    name: 'Knowledge One',
+    type: 1001,
+    typeName: 'Mine',
+    creator: 'Owner',
+    documentCount: 12,
+    folderCount: 3,
+    memberCount: 2,
+    createTime: 1710000000,
+    updateTime: 1710003600000,
+  });
+
+  assert.equal(row.KnowledgeBaseId, 'kb-info-1');
+  assert.equal(row.DocumentCount, 12);
+  assert.equal(row.FolderCount, 3);
+  assert.equal(row.MemberCount, 2);
+  assert.equal(row.CreatedAt, '2024-03-09T16:00:00.000Z');
+  assert.equal(row.UpdatedAt, '2024-03-09T17:00:00.000Z');
+});
+
 test('ask command exposes one-shot knowledge-base QA arguments', () => {
   const ask = getRegistry().get('ima/ask');
   assert.deepEqual(ask.columns, [
@@ -74,4 +125,36 @@ test('ask command exposes one-shot knowledge-base QA arguments', () => {
   assert.deepEqual(args.get('transport')?.choices, ['auto', 'api', 'webcontents', 'ui']);
   assert.equal(args.get('transport')?.default, 'auto');
   assert.equal(args.get('timeout')?.default, 120);
+});
+
+test('status and setup expose UI composer readiness', () => {
+  const setup = getRegistry().get('ima/setup');
+  const status = getRegistry().get('ima/status');
+
+  assert.ok(setup.columns.includes('ComposerReady'));
+  assert.ok(status.columns.includes('ComposerReady'));
+});
+
+test('ask auto failure message includes API, UI, and WebContents context', () => {
+  const message = askTest.buildAutoFailureMessage({
+    apiError: 'api failed',
+    uiError: 'composer missing',
+    webContentsError: 'cdp failed',
+  });
+
+  assert.match(message, /API transport failed: api failed/);
+  assert.match(message, /UI transport skipped\/failed: composer missing/);
+  assert.match(message, /WebContents transport failed: cdp failed/);
+});
+
+test('ask auto UI preflight explains missing composer', () => {
+  const message = askTest.summarizeUiPreflight({
+    running: true,
+    trusted: true,
+    composerReady: false,
+    textCount: 12,
+  });
+
+  assert.match(message, /question composer is not visible/);
+  assert.match(message, /Accessible text nodes: 12/);
 });

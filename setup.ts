@@ -12,14 +12,15 @@ export const setupCommand = cli({
   args: [
     { name: 'activate', type: 'boolean', default: false, help: 'Bring ima.copilot to the foreground before checking' },
   ],
-  columns: ['Status', 'Running', 'ApiReady', 'LoginCookies', 'SafeStorage', 'Hint'],
+  columns: ['Status', 'Running', 'ComposerReady', 'ApiReady', 'LoginCookies', 'SafeStorage', 'Hint'],
   func: async (kwargs) => {
     const state = inspectIma({ activate: Boolean(kwargs.activate) });
     const api = inspectApiState();
     const running = Boolean(state.running);
     const uiProbeUnavailable = Boolean(state.error);
+    const composerReady = !uiProbeUnavailable && Boolean(state.composerReady);
     let status = 'Ready';
-    let hint = 'Run opencli ima ask "<question>" --kb "<knowledgeBaseName>". Use --transport ui when direct API is unavailable.';
+    let hint = 'Run opencli ima ask "<question>" --kb "<knowledgeBaseName>". Auto transport can use WebContents when direct API and UI are unavailable.';
 
     if (uiProbeUnavailable && api.ready) {
       status = 'API ready; UI probe unavailable';
@@ -39,6 +40,9 @@ export const setupCommand = cli({
     } else if (!api.ready) {
       status = 'Login cookie missing';
       hint = 'Confirm ima.copilot is logged in. The required IMA-TOKEN cookie was not found.';
+    } else if (!composerReady) {
+      status = 'Ready; UI composer unavailable';
+      hint = 'Direct API state is present, but UI fallback cannot see the question composer. Auto transport will try WebContents after API failure.';
     } else if (api.encryptedCookies > 0 && !api.explicitSafeStoragePassword) {
       status = 'Ready; Keychain may prompt';
       hint = 'The first kb or ask command may need macOS Keychain access to decrypt ima cookies.';
@@ -47,6 +51,7 @@ export const setupCommand = cli({
     return [{
       Status: status,
       Running: uiProbeUnavailable ? 'unknown' : (running ? 'yes' : 'no'),
+      ComposerReady: uiProbeUnavailable ? 'unknown' : (composerReady ? 'yes' : 'no'),
       ApiReady: api.ready ? 'yes' : 'no',
       LoginCookies: api.tokenCookie || api.explicitCookie ? 'yes' : 'no',
       SafeStorage: api.explicitSafeStoragePassword ? 'env' : (api.encryptedCookies > 0 ? 'keychain' : 'not needed'),

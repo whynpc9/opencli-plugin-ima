@@ -1,5 +1,7 @@
 # opencli-plugin-ima
 
+[中文文档](README.zh-CN.md)
+
 OpenCLI plugin for one-shot Q&A against a selected `ima.copilot` knowledge base.
 
 ## What It Does
@@ -13,12 +15,13 @@ opencli ima ask "请总结这个知识库" --kb "我的知识库" -f json
 `ask` uses `--transport auto` by default:
 
 1. Try the local ima API using the existing ima.copilot login state.
-2. If the API returns an auth/business error, fall back to the foreground ima.copilot UI through macOS Accessibility.
-3. Return one generated answer.
+2. If the API returns an auth/business error, use the foreground ima.copilot UI through macOS Accessibility when the question composer is visible.
+3. If the UI composer is not visible or UI fallback fails, run the same frontend API call inside ima.copilot's real Chromium WebContents.
+4. Return one generated answer.
 
 This is designed for one question and one answer. It does not try to manage multi-turn conversations.
 
-For API calls that fail with ima business error `600001`, the plugin also exposes an explicit experimental WebContents transport. It runs the same frontend API call inside ima.copilot's real Chromium page so native bridge account/device headers come from the app itself:
+For API calls that fail with ima business error `600001`, the WebContents transport runs the frontend API call inside ima.copilot's real Chromium page so native bridge account/device headers come from the app itself:
 
 ```bash
 opencli ima kb --transport webcontents -f json
@@ -29,7 +32,7 @@ opencli ima kb --transport webcontents -f json
 - ima.copilot app: `147.0.7727.4575` (`CFBundleVersion: 7727.4575`)
 - macOS app path: `/Applications/ima.copilot.app`
 - Bundle id observed during development: `com.tencent.imamac`
-- Supported workflow verified: one question against one selected knowledge base through UI transport.
+- Supported workflow verified: one question against one selected knowledge base through WebContents transport; UI transport is retained as a macOS fallback when the composer is visible to Accessibility.
 - WebContents transport verified: knowledge-base list, document list, and one-shot Q&A return success from the real ima page context.
 - API transport is implemented but still treated as experimental for real app runs because it can return `600001`.
 
@@ -57,10 +60,11 @@ opencli plugin install github:whynpc9/opencli-plugin-ima
 | `opencli ima setup [--activate]` | read | Check app, Accessibility, API cookie, and Keychain readiness. |
 | `opencli ima status` | read | Summarize current ima.copilot window and API login state. |
 | `opencli ima kb [--query <name>] [--transport api\|webcontents]` | read | List or search knowledge bases. |
+| `opencli ima kb-info [--query <name>] [--transport api\|webcontents]` | read | List detailed knowledge-base metadata. |
 | `opencli ima ls --kb <name> [--path <folder>]` | read | List documents and folders in a knowledge base path; API first with UI fallback, or explicit WebContents. |
 | `opencli ima export <document> [--output <path>]` | read | Download a document by title or mediaId. |
 | `opencli ima ask <question> --kb <name>` | write | Ask one question against a named knowledge base. |
-| `opencli ima ask <question> --kb-id <id>` | write | Ask by API knowledge-base id; no UI fallback unless `--kb` is also provided. |
+| `opencli ima ask <question> --kb-id <id>` | write | Ask by knowledge-base id; auto can fall back to WebContents when direct API fails. |
 | `opencli ima dump [--output <file>]` | read | Dump the macOS Accessibility tree for selector debugging. |
 
 ### Ask Examples
@@ -87,6 +91,20 @@ Force experimental WebContents API execution inside ima.copilot:
 
 ```bash
 opencli ima ask "请总结这个知识库" --kb-id "<KnowledgeBaseId>" --transport webcontents -f json
+```
+
+### Knowledge Base Examples
+
+List all available knowledge bases with detailed metadata:
+
+```bash
+opencli ima kb-info --transport webcontents -f json
+```
+
+Search knowledge bases by name:
+
+```bash
+opencli ima kb-info --query "我的知识库" --transport webcontents -f json
 ```
 
 ### Document Examples
@@ -178,6 +196,7 @@ CHANGELOG.md               Release notes
 DEVELOPMENT.md             Local validation and release checklist
 ask.ts                     One-shot knowledge-base Q&A command
 kb.ts                      Knowledge-base listing/search command
+kb-info.ts                 Detailed knowledge-base metadata listing command
 setup.ts                   Local readiness check
 status.ts                  Runtime status summary
 dump.ts                    Accessibility tree dump command
@@ -198,7 +217,7 @@ For real app validation and release steps, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Strategy Note
 
-Strategy: `LOCAL` plus direct ima API, explicit real-WebContents API execution, and macOS Accessibility UI fallback.
+Strategy: `LOCAL` plus direct ima API, real-WebContents API execution, and macOS Accessibility UI fallback when the composer is available.
 
 Contract:
 
@@ -218,11 +237,13 @@ Evidence:
 - WebContents API execution has returned successful knowledge-base list responses in the real app context where direct Node API returned `600001`.
 - WebContents document listing has also returned rows from the real app context.
 - WebContents Q&A succeeds when it follows the frontend session path: `session_logic/init_session` followed by `assistant/qa`.
+- `ask --transport auto` now uses WebContents after API failure when the UI composer is not visible or UI fallback fails.
 
 ## Known Limits
 
 - UI transport operates the real ima.copilot app and may create visible Q&A history.
 - WebContents transport may quit and relaunch ima.copilot with local CDP enabled if no CDP endpoint is already available.
+- Because WebContents participates in `ask --transport auto` after API/UI failure, default `ask` may also relaunch ima.copilot and open the local CDP port.
 - WebContents transport opens a local debugging port. Use it only in a trusted local desktop session.
 - `ima ask --transport webcontents` creates a real ima Q&A session and may leave visible history in the local app account.
 - UI transport requires the target knowledge-base name to be visible/selectable in the current ima UI.
