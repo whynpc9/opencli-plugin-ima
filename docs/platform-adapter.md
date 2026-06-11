@@ -2,20 +2,20 @@
 
 日期：2026-06-09
 
-本文说明 `opencli-plugin-ima` 当前的系统差分设计。目标是在保留已验证 macOS 能力的前提下，把未来 Windows 支持需要补的内容集中到清晰边界内。
+本文说明 `opencli-plugin-ima` 当前的系统差分设计。目标是在保留已验证 macOS 能力的前提下，把 Windows 支持和后续仍需补齐的能力集中到清晰边界内。
 
 本文不记录真实知识库名称、真实业务问题、真实答案、Cookie、Token、Keychain 输出、截图或本机用户绝对路径。
 
 ## 结论
 
-当前可运行实现仍以 macOS 为主：
+当前可运行实现以 WebContents 为主，macOS 与 Windows 均已接入该路径：
 
-- 直接 API：依赖本机 ima Chromium profile、Cookie DB 和 macOS Keychain。
-- WebContents：依赖 macOS app 启动命令、profile 符号链接、CDP 端口和真实 ima 页面 native bridge。
-- UI fallback：依赖 macOS Accessibility 和 Swift 脚本。
-- Recent export fallback：依赖本机 ima profile 中最近打开过的预览 URL。
+- 直接 API：依赖本机 ima Chromium profile、Cookie DB 和 macOS Keychain；Windows DPAPI 解密尚未实现。
+- WebContents：依赖平台 app 启动命令、临时 profile link/junction、CDP 端口和真实 ima 页面 native bridge。
+- UI fallback：依赖 macOS Accessibility 和 Swift 脚本；Windows UI Automation 尚未实现。
+- Recent export fallback：依赖本机 ima profile 中最近打开过的预览 URL，macOS 与 Windows 均可扫描默认 profile。
 
-Windows 还不能开箱运行。现阶段已经完成的架构调整是新增 `lib/platform.js`，把系统差异集中到平台适配层，业务 transport 继续复用原来的请求构造、响应解析和命令入口。
+Windows 已可通过 WebContents 完成知识库搜索、问答、文档列表和下载。平台差异集中在 `lib/platform.js`，业务 transport 继续复用请求构造、响应解析和命令入口。
 
 ## 当前边界
 
@@ -56,8 +56,8 @@ Windows 还不能开箱运行。现阶段已经完成的架构调整是新增 `l
 | `uiTransport` | 已实现 | 未实现 | macOS 走 Accessibility；Windows 需要 UI Automation 后端。 |
 | `apiCookieDecryption` | 已实现 | 未实现 | macOS 走 Keychain；Windows 需要 DPAPI/Local State 解密。 |
 | `keychainSafeStorage` | 已实现 | 不适用 | macOS Keychain 专属。 |
-| `webContentsLaunch` | 已实现 | 未实现 | macOS 走 `open` + CDP 参数；Windows 需要启动 `ima.exe` 并验证 CDP。 |
-| `recentPreviewScan` | 已实现 | 仅有路径接口 | Windows 需要确认 profile 根目录和缓存文件布局。 |
+| `webContentsLaunch` | 已实现 | 已实现 | macOS 走 `open` + CDP 参数；Windows 走 `ima.copilot.exe` + CDP 参数和临时 junction。 |
+| `recentPreviewScan` | 已实现 | 已实现 | Windows 默认扫描 `%LOCALAPPDATA%\ima.copilot\User Data\Default` 下的本机 profile。 |
 
 ## macOS 已实现后端
 
@@ -91,25 +91,42 @@ macOS UI fallback 仍保留在 `lib/ax.js`：
 - Swift Accessibility 脚本仍是 macOS 专属 UI 后端。
 - 非 macOS 会直接返回 UI transport 未实现，而不是尝试运行 Swift。
 
-## Windows 待实现后端
+## Windows 已实现后端
 
-优先级建议：
+Windows WebContents 已接入当前成功路径，直接 API 和 UI fallback 仍保留为后续工作。
 
-1. **先实现 WebContents 后端。** 这是最接近当前成功路径的跨平台方案，业务 API payload 可以复用。
-2. **暂缓直接 API Cookie 解密。** Windows DPAPI 解密成本较高，且 direct API 在 macOS 真实环境中仍可能返回 `600001`。
-3. **暂缓 UI Automation fallback。** 只有 WebContents 无法稳定运行时，再考虑 Windows UIA。
+Windows 默认配置：
 
-Windows WebContents 需要补：
+- app root：`%LOCALAPPDATA%\ima.copilot`
+- app path：`%LOCALAPPDATA%\ima.copilot\Application\ima.copilot.exe`
+- profile root：`%LOCALAPPDATA%\ima.copilot\User Data\Default`
+- app support root：`%LOCALAPPDATA%\ima.copilot\User Data`
+- knowledge extension id：`nkohmbngmopdajidckglcoehlaeepeoi`
+- Cookie host：`khmgfdkajnigikondkcjbaflpjflfiee`
+- default `CLIENT-TYPE`：`windows`
+- observed bundle id：`com.tencent.imawin`
 
-- 发现或配置 `ima.exe` 路径。
-- 发现真实 profile root。
-- 验证 Windows 版 ima 是否支持 `TencentRemoteDebugSwitch` 和 CDP。
-- 实现进程退出、启动和检测。
-- 实现非默认 `--user-data-dir` 的登录态复用方式。候选方案包括目录 junction、符号链接、只读复制或用户显式指定 profile alias。
-- 验证 `/json/list` 中 target URL 是否仍包含 `chrome://allknowledge/` 或同一知识库扩展 id。
-- 验证 `chrome.imaFrame.invokeWithCallback` 在 Windows WebContents 中是否提供 `getAccountInfo` 和 `getDeviceInfo`。
+Windows WebContents 启动流程集中在 `launchImaForWebContents({ port })`：
 
-Windows direct API 需要补：
+1. 退出正在运行的 `ima.copilot.exe` 进程。
+2. 等待原进程退出。
+3. 创建临时 junction，目标为真实 Chromium `User Data` 目录。
+4. 启动 `ima.copilot.exe`。
+5. 传入 `--user-data-dir=<junction>`、`--remote-debugging-port`、`--remote-allow-origins=*` 和 `--enable-features=TencentRemoteDebugSwitch`。
+6. 通过 `/json/list` 选择 `chrome://allknowledge/`、知识库扩展页或 `chrome://home/` target。
+7. 在页面中调用 `chrome.imaFrame.invokeWithCallback` 获取账号和设备 header，再执行 browser `fetch`。
+
+已验证的匿名化能力：
+
+- WebContents target 可以在 Windows 上暴露 `chrome.imaFrame.invokeWithCallback`。
+- `getAccountInfo` 和 `getDeviceInfo` 可用于构造知识库请求 header。
+- 知识库搜索、按知识库名称的一问一答、根目录文档列表、下载 URL 解析和实际下载均通过真实 WebContents smoke。
+- `ask --transport auto` 在 Windows 上可以经 API/UI 失败后落到 WebContents。
+- `kb --transport auto` 在 Windows 无显式 API cookie 时优先使用 WebContents。
+- `ls --transport auto` 和 `export --transport auto` 在 direct API 失败后会尝试 WebContents。
+- `dump` 在 Windows 上写出 WebContents target 诊断信息；Accessibility tree dump 仍是 macOS 专属。
+
+Windows direct API 仍需要补：
 
 - 发现 Cookie DB 和 Preferences 位置。
 - 读取 Chromium `Local State` 中的 encrypted key。
@@ -118,7 +135,7 @@ Windows direct API 需要补：
 - 验证 `CLIENT-TYPE` 是否应为 `windows`、`pc` 或其他真实前端值。
 - 确认补齐这些字段后是否仍会返回 `600001`。
 
-Windows UI fallback 需要补：
+Windows UI fallback 仍需要补：
 
 - 选择 UI Automation 技术栈。
 - 实现窗口激活、知识库选择、输入框定位、输入问题、等待回答稳定和答案抽取。
@@ -142,9 +159,9 @@ Windows UI fallback 需要补：
 
 ## 维护规则
 
-- `ask --transport auto` 策略是 direct API first；API 失败后先用可见的 macOS UI composer；UI 不可用或失败时继续尝试 WebContents。
+- `ask --transport auto` 策略是 direct API first；API 失败后先用可见的 macOS UI composer；UI 不可用或失败时继续尝试 WebContents。在 Windows 上 UI transport 未实现，因此会继续尝试 WebContents。
 - 因为 WebContents 可能重启 ima.copilot 并开启本地 CDP 端口，修改平台启动逻辑后必须做真实 app smoke。
-- 新增 Windows 支持时，优先修改 `lib/platform.js`，再少量接入 transport。
+- 新增平台支持时，优先修改 `lib/platform.js`，再少量接入 transport。
 - 不要把 Windows 发现阶段的真实路径、Cookie、Token、截图或知识库内容提交到仓库。
 - 修改平台层后至少运行：
 

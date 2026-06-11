@@ -1,6 +1,7 @@
 import { cli, Strategy } from '@jackwener/opencli/registry';
 import { ArgumentError, CommandExecutionError, EmptyResultError } from '@jackwener/opencli/errors';
 import { listKnowledgeBases } from './lib/api.js';
+import { getImaRuntimeConfig } from './lib/platform.js';
 import { listKnowledgeBasesWebContents } from './lib/webcontents.js';
 
 export const kbCommand = cli({
@@ -13,7 +14,7 @@ export const kbCommand = cli({
   browser: false,
   args: [
     { name: 'query', required: false, help: 'Knowledge base name to search' },
-    { name: 'transport', default: 'api', choices: ['api', 'webcontents'], help: 'Transport: api or webcontents (default: api)' },
+    { name: 'transport', default: 'auto', choices: ['auto', 'api', 'webcontents'], help: 'Transport: auto, api, or webcontents (default: auto)' },
     { name: 'limit', type: 'int', default: 20, help: 'Maximum rows to return (default: 20)' },
   ],
   columns: ['Name', 'KnowledgeBaseId', 'Type', 'Creator'],
@@ -24,16 +25,16 @@ export const kbCommand = cli({
     }
 
     try {
-      const transport = String(kwargs.transport || 'api').trim().toLowerCase();
-      if (!['api', 'webcontents'].includes(transport)) {
-        throw new ArgumentError('Transport must be one of: api, webcontents.');
+      const transport = String(kwargs.transport || 'auto').trim().toLowerCase();
+      if (!['auto', 'api', 'webcontents'].includes(transport)) {
+        throw new ArgumentError('Transport must be one of: auto, api, webcontents.');
       }
-      const list = transport === 'webcontents' ? listKnowledgeBasesWebContents : listKnowledgeBases;
-      const rows = await list({
+      const args = {
         query: String(kwargs.query || '').trim(),
         limit,
         maxPages: 2,
-      });
+      };
+      const rows = await listWithTransport(transport, args);
       if (!rows.length) {
         throw new EmptyResultError('ima/kb', 'No knowledge bases matched. Confirm ima.copilot is logged in, or use --kb-id if you already know the id.');
       }
@@ -50,3 +51,30 @@ export const kbCommand = cli({
     }
   },
 });
+
+async function listWithTransport(transport, args) {
+  if (transport === 'webcontents') return listKnowledgeBasesWebContents(args);
+  if (transport === 'api') return listKnowledgeBases(args);
+
+  if (shouldPreferWebContents()) {
+    return listKnowledgeBasesWebContents(args);
+  }
+
+  try {
+    return await listKnowledgeBases(args);
+  } catch (error) {
+    try {
+      return await listKnowledgeBasesWebContents(args);
+    } catch (webContentsError) {
+      const apiMessage = error instanceof Error ? error.message : String(error);
+      const webContentsMessage = webContentsError instanceof Error ? webContentsError.message : String(webContentsError);
+      throw new Error(`API transport failed: ${apiMessage}; WebContents transport failed: ${webContentsMessage}`);
+    }
+  }
+}
+
+function shouldPreferWebContents() {
+  const runtime = getImaRuntimeConfig();
+  const explicitCookie = Boolean(process.env.IMA_COOKIE || process.env.IMA_COOKIE_HEADER);
+  return runtime.os === 'windows' && !runtime.capabilities.apiCookieDecryption && !explicitCookie;
+}

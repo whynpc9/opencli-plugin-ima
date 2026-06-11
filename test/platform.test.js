@@ -22,7 +22,7 @@ test('platform config preserves current macOS runtime defaults', () => {
   assert.equal(config.capabilities.webContentsLaunch, true);
 });
 
-test('platform config records Windows extension points without claiming support', () => {
+test('platform config records Windows WebContents support and remaining gaps', () => {
   const config = getImaRuntimeConfig({
     platform: 'win32',
     env: {
@@ -39,8 +39,25 @@ test('platform config records Windows extension points without claiming support'
   assert.equal(config.paths.profileDir, 'C:\\Users\\example\\AppData\\Roaming\\ima.copilot\\Default');
   assert.equal(config.capabilities.uiTransport, false);
   assert.equal(config.capabilities.apiCookieDecryption, false);
-  assert.equal(config.capabilities.webContentsLaunch, false);
-  assert.ok(config.pending.some((item) => item.includes('CDP launch')));
+  assert.equal(config.capabilities.webContentsLaunch, true);
+  assert.ok(config.pending.some((item) => item.includes('DPAPI')));
+});
+
+test('platform config discovers Windows ima defaults from LocalAppData', () => {
+  const config = getImaRuntimeConfig({
+    platform: 'win32',
+    homeDir: 'C:\\Users\\example',
+    env: {
+      LOCALAPPDATA: 'C:\\Users\\example\\AppData\\Local',
+    },
+  });
+
+  assert.equal(config.paths.appPath, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\Application\\ima.copilot.exe');
+  assert.equal(config.paths.appSupportDir, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\User Data');
+  assert.equal(config.paths.profileDir, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\User Data\\Default');
+  assert.equal(config.paths.cookieDb, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\User Data\\Default\\Extension Cookies');
+  assert.equal(config.capabilities.webContentsLaunch, true);
+  assert.equal(config.capabilities.recentPreviewScan, true);
 });
 
 test('normalizePlatform maps Node platform ids to adapter names', () => {

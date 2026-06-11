@@ -32,9 +32,10 @@ opencli ima kb --transport webcontents -f json
 - ima.copilot app：`147.0.7727.4575`（`CFBundleVersion: 7727.4575`）
 - macOS app path：`/Applications/ima.copilot.app`
 - 开发中观察到的 bundle id：`com.tencent.imamac`
+- Windows app root：`%LOCALAPPDATA%\ima.copilot`
 - 已验证工作流：通过 WebContents transport 对指定知识库完成一次问答。
 - UI transport 保留为 macOS fallback，但要求问答输入框对 Accessibility 可见。
-- WebContents transport 已验证能力：知识库列表、文档列表、一次性问答。
+- WebContents transport 已在 macOS 和 Windows 验证：知识库列表、文档列表、下载 URL 解析、实际下载、一次性问答。
 - API transport 已实现，但真实 app 运行中仍可能返回 `600001`，因此仍视为实验路径。
 
 ## 安装
@@ -58,15 +59,15 @@ opencli plugin install github:whynpc9/opencli-plugin-ima
 
 | 命令 | 权限 | 说明 |
 | --- | --- | --- |
-| `opencli ima setup [--activate]` | read | 检查 app、Accessibility、API Cookie 和 Keychain 准备状态。 |
-| `opencli ima status` | read | 汇总当前 ima.copilot 窗口、UI composer 和 API 登录态。 |
-| `opencli ima kb [--query <name>] [--transport api\|webcontents]` | read | 列出或搜索知识库。 |
+| `opencli ima setup [--activate]` | read | 检查 app、Accessibility、WebContents、API Cookie 和 Keychain 准备状态。 |
+| `opencli ima status` | read | 汇总当前 ima.copilot 窗口、WebContents 和 API 登录态。 |
+| `opencli ima kb [--query <name>] [--transport auto\|api\|webcontents]` | read | 列出或搜索知识库；Windows 上 `auto` 优先使用 WebContents。 |
 | `opencli ima kb-info [--query <name>] [--transport api\|webcontents]` | read | 列出更完整的知识库元数据。 |
-| `opencli ima ls --kb <name> [--path <folder>]` | read | 列出知识库目录下的文档和文件夹；支持 API、UI fallback 或显式 WebContents。 |
-| `opencli ima export <document> [--output <path>]` | read | 按标题或 mediaId 下载文档。 |
+| `opencli ima ls --kb <name> [--path <folder>]` | read | 列出知识库目录下的文档和文件夹；`auto` 可退回 WebContents。 |
+| `opencli ima export <document> [--output <path>]` | read | 按标题或 mediaId 下载文档；`auto` 可通过 WebContents 解析下载 URL。 |
 | `opencli ima ask <question> --kb <name>` | write | 对指定知识库提一个问题。 |
 | `opencli ima ask <question> --kb-id <id>` | write | 按知识库 id 提问；direct API 失败时 `auto` 可退回 WebContents。 |
-| `opencli ima dump [--output <file>]` | read | 导出 macOS Accessibility tree，用于调试选择器。 |
+| `opencli ima dump [--output <file>]` | read | 导出 macOS Accessibility 或 Windows WebContents 诊断信息，用于调试。 |
 
 ### 问答示例
 
@@ -148,13 +149,13 @@ opencli ima export --media-id "<MediaId>" --kb-id "<KnowledgeBaseId>" --transpor
 
 ## 运行要求
 
-- macOS，且已安装 `/Applications/ima.copilot.app`。
+- macOS，且已安装 `/Applications/ima.copilot.app`；或 Windows，且 ima.copilot 安装在 `%LOCALAPPDATA%\ima.copilot`。
 - ima.copilot 已登录。当前已测试 app 版本为 `147.0.7727.4575`。
 - 如果使用 UI transport，运行 OpenCLI 的终端进程需要 macOS Accessibility 权限。
 - 如果 API transport 需要解密本机 Cookie，需要允许读取 `ima.copilot Safe Storage` 的 macOS Keychain 项。
 - 如果使用 WebContents transport，Node.js runtime 需要提供全局 `WebSocket`；推荐 Node.js 22+。
 
-Windows 支持尚未完成。代码中已经加入平台适配层，便于后续实现 Windows WebContents 启动、profile 发现和本地安全存储能力；详见 [Platform Adapter and OS Differences](docs/platform-adapter.md)。
+Windows 已支持 WebContents 路径。Windows direct API Cookie DPAPI 解密和 Windows UI Automation fallback 尚未实现；详见 [Platform Adapter and OS Differences](docs/platform-adapter.md)。
 
 ## 环境变量
 
@@ -217,12 +218,13 @@ OpenCLI 会扫描插件根目录下的 `.ts` 和 `.js` 命令文件。TypeScript
 约定：
 
 - API path：使用本机 ima 登录态、本地 Chromium Cookie DB 和 ima 前端 API endpoint。
-- WebContents path：连接本机 ima.copilot CDP，通过真实页面的 `chrome.imaFrame` native bridge 获取账号/设备请求头，并在页面中执行 browser `fetch`。
+- WebContents path：连接本机 ima.copilot CDP，通过真实页面的 `chrome.imaFrame` native bridge 获取账号/设备请求头，并在页面中执行 browser `fetch`。Windows 上会用临时 junction 指向真实 Chromium `User Data` 目录来复用登录态。
 - UI path：操作可见 ima.copilot 知识库 UI、问答输入框和生成结果文本。
 
 证据：
 
 - 当前测试 app：`/Applications/ima.copilot.app`，版本 `147.0.7727.4575`，bundle id `com.tencent.imamac`。
+- Windows WebContents smoke：版本 `147.0.7727.4575`，`CLIENT-TYPE=windows`，知识库搜索、一次性问答、文档列表和文档下载均通过真实 WebContents 上下文完成。
 - 观察到的 API endpoint：
   - `knowledge_tab_reader/search_knowledge_base`
   - `knowledge_tab_reader/get_knowledge_base_list`
@@ -232,17 +234,21 @@ OpenCLI 会扫描插件根目录下的 `.ts` 和 `.js` 命令文件。TypeScript
 - WebContents 在真实 app 页面上下文中已返回成功的知识库列表、文档列表和问答结果。
 - WebContents Q&A 使用真实前端 session 路径：先 `session_logic/init_session`，再 `assistant/qa`。
 - `ask --transport auto` 会在 API 失败且 UI composer 不可见或 UI fallback 失败时使用 WebContents。
+- `ls --transport auto` 和 `export --transport auto` 会在 direct API 失败后尝试 WebContents。
 
 ## 已知限制
 
 - UI transport 会操作真实 ima.copilot app，可能留下可见问答历史。
 - WebContents transport 在没有可用 CDP endpoint 时，可能退出并重新启动 ima.copilot。
 - 因为 WebContents 已参与 `ask --transport auto` 的后段 fallback，默认 `ask` 在 API/UI 都不可用时也可能重启 ima.copilot 并开启本地 CDP 端口。
+- Windows WebContents launch 会使用临时 junction 指向本机 ima.copilot `User Data` 目录，以保留当前登录态。
 - WebContents transport 会开启本地调试端口，只应在可信本机桌面会话中使用。
 - `ima ask --transport webcontents` 会创建真实 ima Q&A session，可能在本机 app 账号中留下历史。
 - UI transport 要求目标知识库名称在当前 UI 中可见/可选择。
 - UI transport 的 `ReferencesFound` 是 best-effort，可能受 UI 文本结构影响。
 - Direct API transport 仍需要继续研究 native bridge refresh、device 和 crypto context，才能成为唯一主路径。
+- Windows direct API transport 尚不能解密 Chromium Cookie；除非显式提供 `IMA_COOKIE` 做 API 实验，否则应使用 WebContents。
+- Windows UI transport 和 Accessibility dump 尚未实现；`ima dump` 在 Windows 上会写出 WebContents target 诊断信息。
 - `ima ls` 的 API transport 依赖 `knowledge_tab_reader/get_knowledge_list`，真实环境中该 endpoint 可能返回 `600001`。
 - `ima export --transport recent` 只能下载本机 ima.copilot profile 中已经存在预览 URL 的文档，通常需要先在 app 中打开过该文档。
 

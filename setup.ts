@@ -1,6 +1,8 @@
 import { cli, Strategy } from '@jackwener/opencli/registry';
+import * as fs from 'node:fs';
 import { inspectIma } from './lib/ax.js';
 import { inspectApiState } from './lib/api.js';
+import { getImaRuntimeConfig } from './lib/platform.js';
 
 export const setupCommand = cli({
   site: 'ima',
@@ -12,17 +14,22 @@ export const setupCommand = cli({
   args: [
     { name: 'activate', type: 'boolean', default: false, help: 'Bring ima.copilot to the foreground before checking' },
   ],
-  columns: ['Status', 'Running', 'ComposerReady', 'ApiReady', 'LoginCookies', 'SafeStorage', 'Hint'],
+  columns: ['Status', 'Running', 'ComposerReady', 'WebContents', 'ApiReady', 'LoginCookies', 'SafeStorage', 'Hint'],
   func: async (kwargs) => {
+    const runtime = getImaRuntimeConfig();
     const state = inspectIma({ activate: Boolean(kwargs.activate) });
     const api = inspectApiState();
     const running = Boolean(state.running);
     const uiProbeUnavailable = Boolean(state.error);
     const composerReady = !uiProbeUnavailable && Boolean(state.composerReady);
+    const webContents = inspectWebContents(runtime);
     let status = 'Ready';
     let hint = 'Run opencli ima ask "<question>" --kb "<knowledgeBaseName>". Auto transport can use WebContents when direct API and UI are unavailable.';
 
-    if (uiProbeUnavailable && api.ready) {
+    if (uiProbeUnavailable && webContents.ready) {
+      status = 'Ready via WebContents';
+      hint = 'Run opencli ima ask "<question>" --kb "<knowledgeBaseName>". Auto transport can use WebContents with the local ima.copilot login state.';
+    } else if (uiProbeUnavailable && api.ready) {
       status = 'API ready; UI probe unavailable';
       hint = 'API transport can use --kb-id. UI fallback needs Accessibility access and --kb "<knowledgeBaseName>".';
     } else if (uiProbeUnavailable && api.platform && api.platform !== 'macos') {
@@ -52,6 +59,7 @@ export const setupCommand = cli({
       Status: status,
       Running: uiProbeUnavailable ? 'unknown' : (running ? 'yes' : 'no'),
       ComposerReady: uiProbeUnavailable ? 'unknown' : (composerReady ? 'yes' : 'no'),
+      WebContents: webContents.label,
       ApiReady: api.ready ? 'yes' : 'no',
       LoginCookies: api.tokenCookie || api.explicitCookie ? 'yes' : 'no',
       SafeStorage: api.explicitSafeStoragePassword ? 'env' : (api.encryptedCookies > 0 ? 'keychain' : 'not needed'),
@@ -59,3 +67,10 @@ export const setupCommand = cli({
     }];
   },
 });
+
+function inspectWebContents(runtime) {
+  if (!runtime.capabilities.webContentsLaunch) return { ready: false, label: 'no' };
+  if (!runtime.paths.appPath || !fs.existsSync(runtime.paths.appPath)) return { ready: false, label: 'app missing' };
+  if (!runtime.paths.profileDir || !fs.existsSync(runtime.paths.profileDir)) return { ready: false, label: 'profile missing' };
+  return { ready: true, label: 'yes' };
+}
