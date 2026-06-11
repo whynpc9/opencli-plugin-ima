@@ -55,8 +55,8 @@ test('export command exposes title/mediaId download arguments', () => {
 test('kb command exposes direct and WebContents transports', () => {
   const command = getRegistry().get('ima/kb');
   const args = new Map(command.args.map((arg) => [arg.name, arg]));
-  assert.deepEqual(args.get('transport')?.choices, ['api', 'webcontents']);
-  assert.equal(args.get('transport')?.default, 'api');
+  assert.deepEqual(args.get('transport')?.choices, ['auto', 'api', 'webcontents']);
+  assert.equal(args.get('transport')?.default, 'auto');
 });
 
 test('kb-info command exposes detailed knowledge-base listing arguments', () => {
@@ -132,7 +132,9 @@ test('status and setup expose UI composer readiness', () => {
   const status = getRegistry().get('ima/status');
 
   assert.ok(setup.columns.includes('ComposerReady'));
+  assert.ok(setup.columns.includes('WebContents'));
   assert.ok(status.columns.includes('ComposerReady'));
+  assert.ok(status.columns.includes('WebContents'));
 });
 
 test('ask auto failure message includes API, UI, and WebContents context', () => {

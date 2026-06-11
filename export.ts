@@ -82,6 +82,7 @@ export const exportCommand = cli({
     }
 
     let apiError = null;
+    let webContentsError = null;
     if (transport !== 'recent') {
       try {
         const resolved = await resolveApiDownloadTarget({
@@ -113,10 +114,38 @@ export const exportCommand = cli({
       }
     }
 
+    if (transport === 'auto') {
+      try {
+        const resolved = await resolveWebContentsDownloadTarget({
+          title: targetTitle,
+          mediaId: targetMediaId,
+          kb: String(kwargs.kb || '').trim(),
+          kbId: String(kwargs['kb-id'] || '').trim(),
+          path: String(kwargs.path || '').trim(),
+          limit,
+          maxPages,
+        });
+        const downloaded = await downloadDocumentUrl({
+          url: resolved.url,
+          output: kwargs.output || '',
+          title: resolved.title || targetTitle || resolved.mediaId || 'ima-document',
+        });
+        return [formatResult({
+          transport: 'webcontents',
+          title: resolved.title || targetTitle,
+          mediaId: resolved.mediaId || targetMediaId,
+          downloaded,
+          source: resolved.source,
+        })];
+      } catch (error) {
+        webContentsError = error instanceof Error ? error.message : String(error);
+      }
+    }
+
     try {
       const previews = findRecentDocumentPreviews({ title: targetTitle, mediaId: targetMediaId });
       if (!previews.length) {
-        const prefix = apiError ? `API transport failed: ${apiError}; ` : '';
+        const prefix = buildFailurePrefix({ apiError, webContentsError });
         throw new Error(`${prefix}no matching local preview URL was found. Open the document once in ima.copilot, then retry export.`);
       }
       const preview = preferPreview(previews, { title: targetTitle, mediaId: targetMediaId });
@@ -138,6 +167,13 @@ export const exportCommand = cli({
     }
   },
 });
+
+function buildFailurePrefix({ apiError, webContentsError }) {
+  return [
+    apiError ? `API transport failed: ${apiError}` : '',
+    webContentsError ? `WebContents transport failed: ${webContentsError}` : '',
+  ].filter(Boolean).join('; ') + (apiError || webContentsError ? '; ' : '');
+}
 
 async function resolveApiDownloadTarget({ title, mediaId, kb, kbId, path, limit, maxPages }) {
   let resolvedMediaId = mediaId;

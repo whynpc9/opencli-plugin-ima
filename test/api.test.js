@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
-import { askImaApi, listKnowledgeBases, listKnowledgeDocuments, normalizeKnowledgeBase } from '../lib/api.js';
+import { askImaApi, listKnowledgeBases, listKnowledgeDocuments, normalizeKnowledgeBase, __test__ as apiTest } from '../lib/api.js';
 
 const REQUIRED_COOKIE = [
   'IMA-UID=user-1',
@@ -252,6 +252,17 @@ test('askImaApi sends one QA request and joins streamed MESSAGE events', async (
     channel_id: '',
   });
   assert.equal(calls[0].headers.accept, 'text/event-stream');
+});
+
+test('structured QA blocks can be used as an answer fallback', () => {
+  const text = apiTest.extractStructuredBlockText({
+    blocks: [
+      { type: 'paragraph', content: [{ text: 'hello' }, { text: ' world' }] },
+      { markdown: '\nfrom markdown' },
+    ],
+  });
+
+  assert.equal(text, 'hello world\nfrom markdown');
 });
 
 function jsonResponse(body) {

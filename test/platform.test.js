@@ -22,7 +22,7 @@ test('platform config preserves current macOS runtime defaults', () => {
   assert.equal(config.capabilities.webContentsLaunch, true);
 });
 
-test('platform config records Windows extension points without claiming support', () => {
+test('platform config records Windows WebContents support and remaining gaps', () => {
   const config = getImaRuntimeConfig({
     platform: 'win32',
     env: {
@@ -37,10 +37,43 @@ test('platform config records Windows extension points without claiming support'
   assert.equal(config.identifiers.clientType, 'windows');
   assert.equal(config.paths.appPath, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\ima.exe');
   assert.equal(config.paths.profileDir, 'C:\\Users\\example\\AppData\\Roaming\\ima.copilot\\Default');
+  assert.equal(config.commands.processPattern, 'ima.exe');
   assert.equal(config.capabilities.uiTransport, false);
   assert.equal(config.capabilities.apiCookieDecryption, false);
-  assert.equal(config.capabilities.webContentsLaunch, false);
-  assert.ok(config.pending.some((item) => item.includes('CDP launch')));
+  assert.equal(config.capabilities.webContentsLaunch, true);
+  assert.ok(config.pending.some((item) => item.includes('DPAPI')));
+});
+
+test('platform config discovers Windows ima defaults from LocalAppData', () => {
+  const config = getImaRuntimeConfig({
+    platform: 'win32',
+    homeDir: 'C:\\Users\\example',
+    env: {
+      LOCALAPPDATA: 'C:\\Users\\example\\AppData\\Local',
+    },
+  });
+
+  assert.equal(config.paths.appPath, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\Application\\ima.copilot.exe');
+  assert.equal(config.paths.appSupportDir, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\User Data');
+  assert.equal(config.paths.profileDir, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\User Data\\Default');
+  assert.equal(config.paths.cookieDb, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\User Data\\Default\\Extension Cookies');
+  assert.equal(config.commands.processPattern, 'ima.copilot.exe');
+  assert.equal(config.capabilities.webContentsLaunch, true);
+  assert.equal(config.capabilities.recentPreviewScan, true);
+});
+
+test('platform config honors Windows process pattern overrides', () => {
+  const config = getImaRuntimeConfig({
+    platform: 'win32',
+    homeDir: 'C:\\Users\\example',
+    env: {
+      IMA_APP_PATH: 'D:\\Apps\\ima-custom\\custom-ima.exe',
+      IMA_PROCESS_PATTERN: 'D:\\Apps\\ima-custom\\runner.exe',
+    },
+  });
+
+  assert.equal(config.paths.appPath, 'D:\\Apps\\ima-custom\\custom-ima.exe');
+  assert.equal(config.commands.processPattern, 'D:\\Apps\\ima-custom\\runner.exe');
 });
 
 test('normalizePlatform maps Node platform ids to adapter names', () => {

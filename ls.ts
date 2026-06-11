@@ -58,6 +58,7 @@ export const lsCommand = cli({
     }
 
     let apiError = null;
+    let webContentsError = null;
     if (transport !== 'ui') {
       try {
         const result = await listKnowledgeDocuments({
@@ -77,8 +78,23 @@ export const lsCommand = cli({
       }
     }
 
+    if (transport === 'auto') {
+      try {
+        const result = await listKnowledgeDocumentsWebContents({
+          kb,
+          kbId,
+          path,
+          limit,
+          maxPages,
+        });
+        return formatRows(result.items, { transport: 'webcontents', path: result.path });
+      } catch (error) {
+        webContentsError = error instanceof Error ? error.message : String(error);
+      }
+    }
+
     if (kbId && !kb) {
-      throw new CommandExecutionError(`ima/ls failed: ${apiError ? `${apiError}; ` : ''}UI transport cannot verify a knowledge base by --kb-id. Use --kb <knowledgeBaseName> or switch ima.copilot to the target knowledge base and run --transport ui without --kb-id.`);
+      throw new CommandExecutionError(`ima/ls failed: ${buildFailurePrefix({ apiError, webContentsError })}UI transport cannot verify a knowledge base by --kb-id. Use --kb <knowledgeBaseName> or switch ima.copilot to the target knowledge base and run --transport ui without --kb-id.`);
     }
 
     try {
@@ -90,7 +106,7 @@ export const lsCommand = cli({
     } catch (error) {
       if (error instanceof ArgumentError || error instanceof EmptyResultError) throw error;
       const uiError = error instanceof Error ? error.message : String(error);
-      const prefix = apiError ? `API transport failed: ${apiError}; ` : '';
+      const prefix = buildFailurePrefix({ apiError, webContentsError });
       throw new CommandExecutionError(`ima/ls failed: ${prefix}UI transport failed: ${uiError}`);
     }
   },
@@ -130,4 +146,11 @@ function formatTimestamp(value) {
   const date = new Date(ms);
   if (Number.isNaN(date.getTime())) return '';
   return date.toISOString();
+}
+
+function buildFailurePrefix({ apiError, webContentsError }) {
+  return [
+    apiError ? `API transport failed: ${apiError}` : '',
+    webContentsError ? `WebContents transport failed: ${webContentsError}` : '',
+  ].filter(Boolean).join('; ') + (apiError || webContentsError ? '; ' : '');
 }

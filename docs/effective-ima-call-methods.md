@@ -37,7 +37,8 @@ opencli ima kb --transport webcontents -f json
 - app path：`/Applications/ima.copilot.app`
 - bundle id：`com.tencent.imamac`
 - 已验证能力：基于指定知识库名称的一问一答，返回完整答案。
-- 已验证 WebContents 能力：在真实 ima 页面上下文中调用知识库列表、文档列表和一问一答 API，返回成功结果。
+- 已验证 WebContents 能力：在 macOS 和 Windows 的真实 ima 页面上下文中调用知识库列表、文档列表、下载 URL 解析和一问一答 API，返回成功结果。
+- Windows WebContents 基线：ima.copilot 安装于 `%LOCALAPPDATA%\ima.copilot`，通过临时 junction 复用真实 `User Data`，`CLIENT-TYPE` 使用 `windows`。
 - 可靠 transport：`webcontents`
 - fallback transport：`ui`
 - 实验 transport：`api`
@@ -84,6 +85,7 @@ WebContents transport 还需要：
 - Node.js runtime 提供全局 `WebSocket`。建议 Node.js 22+。
 - ima.copilot 能以本地 CDP 端口启动，或已经由用户显式启动了可访问的 CDP 端口。
 - 本机桌面会话可信，因为该方案会开启本地调试端口。
+- Windows 上 WebContents 需要 `%LOCALAPPDATA%\ima.copilot\Application\ima.copilot.exe` 和 `%LOCALAPPDATA%\ima.copilot\User Data\Default` 存在；direct API Cookie DPAPI 解密和 Windows UI Automation fallback 仍未实现。
 
 ## WebContents Transport 实现方法
 
