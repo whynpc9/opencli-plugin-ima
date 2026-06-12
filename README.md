@@ -251,6 +251,7 @@ Evidence:
 - WebContents document listing has also returned rows from the real app context.
 - WebContents Q&A succeeds when it follows the frontend session path: `session_logic/init_session` followed by `assistant/qa`; explicit `--session-id` and cached `--session continue` reuse the `assistant/qa` session id.
 - `ask` can pass `model_info.model_type` and optional `model_info.model_id` through API and WebContents transports. UI transport does not support model switching.
+- Windows 4.28.6 model smoke: `model_manage/get_models` returned HY 2.0 (`0`), HY 2.0 Think (`2`), DeepSeek V3.2 (`3`), and DeepSeek V3.2 Think (`1`); `ds-v3.2` aliases use those values.
 - `ask --transport auto` now uses WebContents after API failure when the UI composer is not visible or UI fallback fails.
 - `ls --transport auto` and `export --transport auto` now try WebContents after direct API failure before using UI/recent fallbacks.
 

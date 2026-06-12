@@ -110,6 +110,13 @@ assistant_nl/operation_qa -> SSE opened, COMPLETED event returned ima business f
 
 模型控制通过 `model_info` 字段透传：`--model`/`--model-type` 控制 `model_type`，`--model-id` 控制 `model_id`，`--think` 映射到已知 thinking/non-thinking 成对模型。UI 自动化路径不承诺模型切换。
 
+Windows 4.28.6 WebContents 实测补充：
+
+- `model_manage/get_models` 返回 4 个可用官方模型：HY 2.0、HY 2.0 Think、DeepSeek V3.2、DeepSeek V3.2 Think。
+- 当前有效 `model_type` 映射为：HY 2.0=`0`，HY 2.0 Think=`2`，DeepSeek V3.2=`3`，DeepSeek V3.2 Think=`1`。
+- `model_type=4/5` 在该 Windows 前端上返回“模型失效”，因此 `ds-v3.2` alias 使用 `3`，`ds-v3.2 --think deep` 使用 `1`。
+- 匿名化 smoke 通过：`--session new` 写入临时 session-state 后，`--session continue` 复用同一个 session id；`model_type=3` 和 `model_type=1` 均可返回答案。
+
 `webcontents` 已进入 `ask --transport auto` 的后段 fallback：直接 API 失败后，如果 UI composer 不可见或 UI fallback 失败，则继续尝试 WebContents。该路径仍可能退出并重启 ima.copilot，同时会开启本地 CDP 端口。
 
 ## 直接 API 路径

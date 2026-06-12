@@ -162,6 +162,8 @@ WebContents transport 还需要：
 
 模型切换通过 `model_info` 完成：`--model`/`--model-type` 设置 `model_type`，`--model-id` 设置可选 `model_id`，`--think` 会映射到已知的 thinking/non-thinking 成对模型。UI transport 不保证模型或 session 控制；在 `auto` 中出现会话控制会跳过 API/UI，出现模型控制会跳过 UI fallback。
 
+Windows 4.28.6 前端的模型列表来自 `model_manage/get_models`。已验证 `ds-v3.2` 使用 `model_type=3`，`ds-v3.2 --think deep` 使用 `model_type=1`；旧的 `4/5` 会返回模型失效。
+
 后续若要继续完善 API transport，应优先研究 native bridge 相关上下文，例如账号刷新、设备信息和加密会话，而不是只继续补 Cookie 字段。
 
 ## 文档列表与导出路径

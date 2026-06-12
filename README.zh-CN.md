@@ -245,6 +245,7 @@ OpenCLI 会扫描插件根目录下的 `.ts` 和 `.js` 命令文件。TypeScript
 - WebContents 在真实 app 页面上下文中已返回成功的知识库列表、文档列表和问答结果。
 - WebContents Q&A 使用真实前端 session 路径：先 `session_logic/init_session`，再 `assistant/qa`；显式 `--session-id` 和缓存的 `--session continue` 会复用 `assistant/qa` session id。
 - `ask` 可以向 API 和 WebContents transports 透传 `model_info.model_type` 和可选 `model_info.model_id`。UI transport 不支持切换模型。
+- Windows 4.28.6 模型 smoke：`model_manage/get_models` 返回 HY 2.0 (`0`)、HY 2.0 Think (`2`)、DeepSeek V3.2 (`3`) 和 DeepSeek V3.2 Think (`1`)；`ds-v3.2` aliases 使用这些值。
 - `ask --transport auto` 会在 API 失败且 UI composer 不可见或 UI fallback 失败时使用 WebContents。
 - `ls --transport auto` 和 `export --transport auto` 会在 direct API 失败后尝试 WebContents。
 

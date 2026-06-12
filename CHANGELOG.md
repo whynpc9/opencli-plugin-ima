@@ -4,6 +4,7 @@
 
 - Added WebContents ask session controls: `--session new`, `--session continue`, and `--session-id`.
 - Added ask model controls: `--model`, `--model-type`, `--model-id`, and `--think`.
+- Aligned DeepSeek model aliases with the Windows 4.28.6 frontend model list (`ds-v3.2` -> `3`, thinking -> `1`).
 - Added Windows WebContents launch support using the local ima.copilot install, Chromium `User Data` junctions, and `CLIENT-TYPE=windows`.
 - Added WebContents fallback for `ima kb --transport auto`, `ima ls --transport auto`, and `ima export --transport auto`.
 - Updated setup/status diagnostics to report WebContents readiness.
