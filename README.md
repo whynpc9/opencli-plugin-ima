@@ -2,7 +2,7 @@
 
 [中文文档](README.zh-CN.md)
 
-OpenCLI plugin for one-shot Q&A against a selected `ima.copilot` knowledge base.
+OpenCLI plugin for one-shot and session-based Q&A against a selected `ima.copilot` knowledge base.
 
 ## What It Does
 
@@ -19,7 +19,7 @@ opencli ima ask "请总结这个知识库" --kb "我的知识库" -f json
 3. If the UI composer is not visible or UI fallback fails, run the same frontend API call inside ima.copilot's real Chromium WebContents.
 4. Return one generated answer.
 
-This is designed for one question and one answer. It does not try to manage multi-turn conversations.
+By default this remains one question and one answer. WebContents transport can also continue a previous `ima ask` session with `--session continue` or an explicit `--session-id`.
 
 For API calls that fail with ima business error `600001`, the WebContents transport runs the frontend API call inside ima.copilot's real Chromium page so native bridge account/device headers come from the app itself:
 
@@ -61,7 +61,6 @@ opencli plugin install github:whynpc9/opencli-plugin-ima
 | `opencli ima setup [--activate]` | read | Check app, Accessibility, WebContents, API cookie, and Keychain readiness. |
 | `opencli ima status` | read | Summarize current ima.copilot window, WebContents, and API login state. |
 | `opencli ima kb [--query <name>] [--transport auto\|api\|webcontents]` | read | List or search knowledge bases; `auto` prefers WebContents on Windows. |
-| `opencli ima kb-info [--query <name>] [--transport api\|webcontents]` | read | List detailed knowledge-base metadata. |
 | `opencli ima ls --kb <name> [--path <folder>]` | read | List documents and folders in a knowledge base path; `auto` can fall back to WebContents. |
 | `opencli ima export <document> [--output <path>]` | read | Download a document by title or mediaId; `auto` can resolve URLs through WebContents. |
 | `opencli ima ask <question> --kb <name>` | write | Ask one question against a named knowledge base. |
@@ -94,18 +93,25 @@ Force experimental WebContents API execution inside ima.copilot:
 opencli ima ask "请总结这个知识库" --kb-id "<KnowledgeBaseId>" --transport webcontents -f json
 ```
 
-### Knowledge Base Examples
-
-List all available knowledge bases with detailed metadata:
+Start a clean WebContents session, then continue it:
 
 ```bash
-opencli ima kb-info --transport webcontents -f json
+opencli ima ask "请总结这个知识库" --kb-id "<KnowledgeBaseId>" --session new --transport webcontents -f json
+opencli ima ask "继续上一轮，列出三个重点" --kb-id "<KnowledgeBaseId>" --session continue --transport webcontents -f json
 ```
 
-Search knowledge bases by name:
+Continue a known session id:
 
 ```bash
-opencli ima kb-info --query "我的知识库" --transport webcontents -f json
+opencli ima ask "继续追问" --session-id "<SessionId>" --transport webcontents -f json
+```
+
+Select a model or thinking mode:
+
+```bash
+opencli ima ask "请总结这个知识库" --kb-id "<KnowledgeBaseId>" --model ds-v3.2 --transport webcontents -f json
+opencli ima ask "请深入分析" --kb-id "<KnowledgeBaseId>" --model ds-v3.2 --think deep --transport webcontents -f json
+opencli ima ask "请总结这个知识库" --kb-id "<KnowledgeBaseId>" --model-type 5 --model-id "<ModelId>" --transport webcontents -f json
 ```
 
 ### Document Examples
@@ -175,6 +181,8 @@ Windows support is implemented for the WebContents path. Direct API cookie decry
 | `IMA_API_ENDPOINT` | Override `assistant_nl/knowledge_base_qa`. |
 | `IMA_EXTENSION_VERSION` | Override extension version header. |
 | `IMA_GUID` / `IMA_Q36` / `IMA_IUA` | Override device cookie fields during API experiments. |
+| `IMA_MODEL_TYPE` / `IMA_MODEL_ID` | Override ask model fields for API and WebContents experiments. |
+| `IMA_SESSION_STATE_FILE` | Override the local file used to remember the last WebContents ask session id. |
 | `IMA_WEBCONTENTS_CDP_PORT` | Override the local CDP port used by WebContents transport. Defaults to `9227`. |
 | `IMA_WEBCONTENTS_LAUNCH` | Set to `0` to require an already-running CDP-enabled ima.copilot instead of launching one. |
 
@@ -195,9 +203,8 @@ package.json               npm metadata and publish file boundary
 LICENSE                    MIT license
 CHANGELOG.md               Release notes
 DEVELOPMENT.md             Local validation and release checklist
-ask.ts                     One-shot knowledge-base Q&A command
+ask.ts                     Knowledge-base Q&A command with one-shot, session, and model controls
 kb.ts                      Knowledge-base listing/search command
-kb-info.ts                 Detailed knowledge-base metadata listing command
 setup.ts                   Local readiness check
 status.ts                  Runtime status summary
 dump.ts                    Accessibility tree dump command
@@ -238,7 +245,8 @@ Evidence:
 - API can currently return `600001` even when local cookies are present; UI fallback has completed the target workflow.
 - WebContents API execution has returned successful knowledge-base list responses in the real app context where direct Node API returned `600001`.
 - WebContents document listing has also returned rows from the real app context.
-- WebContents Q&A succeeds when it follows the frontend session path: `session_logic/init_session` followed by `assistant/qa`.
+- WebContents Q&A succeeds when it follows the frontend session path: `session_logic/init_session` followed by `assistant/qa`; explicit `--session-id` and cached `--session continue` reuse the `assistant/qa` session id.
+- `ask` can pass `model_info.model_type` and optional `model_info.model_id` through API and WebContents transports. UI transport does not support model switching.
 - `ask --transport auto` now uses WebContents after API failure when the UI composer is not visible or UI fallback fails.
 - `ls --transport auto` and `export --transport auto` now try WebContents after direct API failure before using UI/recent fallbacks.
 
@@ -250,6 +258,9 @@ Evidence:
 - On Windows, WebContents launch uses a temporary directory junction to the local ima.copilot `User Data` directory so the relaunched app keeps the current login state.
 - WebContents transport opens a local debugging port. Use it only in a trusted local desktop session.
 - `ima ask --transport webcontents` creates a real ima Q&A session and may leave visible history in the local app account.
+- `ima ask --session continue` uses a local session-state file that stores session ids and knowledge-base identifiers, but not questions or answers. Use `IMA_SESSION_STATE_FILE` to redirect it.
+- Session controls require WebContents transport. In `auto`, session controls skip direct API and UI because those paths cannot continue a known WebContents session.
+- Model controls are supported by API and WebContents transports. In `auto`, UI fallback is skipped when model controls are present because UI automation cannot guarantee the selected model.
 - UI transport requires the target knowledge-base name to be visible/selectable in the current ima UI.
 - `ReferencesFound` on UI transport is best-effort and may be affected by UI text structure.
 - Direct API transport still needs more work around native bridge refresh/device/crypto context before it can be the only transport.

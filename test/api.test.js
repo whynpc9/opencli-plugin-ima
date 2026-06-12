@@ -241,6 +241,8 @@ test('askImaApi sends one QA request and joins streamed MESSAGE events', async (
 
   assert.equal(result.status, 'success');
   assert.equal(result.knowledgeBaseId, 'kb-direct-1');
+  assert.equal(result.modelType, 3);
+  assert.equal(result.modelId, 'official_3');
   assert.equal(result.answer, '第一段，第二段。');
   assert.equal(result.referencesFound, 2);
   assert.equal(calls.length, 1);
@@ -252,6 +254,29 @@ test('askImaApi sends one QA request and joins streamed MESSAGE events', async (
     channel_id: '',
   });
   assert.equal(calls[0].headers.accept, 'text/event-stream');
+});
+
+test('askImaApi preserves explicit zero model type', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) });
+    return sseResponse([
+      { event: 'MESSAGE', data: { Text: 'answer' } },
+      { event: 'COMPLETED', data: { Code: 0 } },
+    ]);
+  };
+
+  const result = await askImaApi({
+    question: '请总结',
+    kbId: 'kb-direct-1',
+    modelType: 0,
+    modelId: '',
+    timeout: 5,
+  });
+
+  assert.equal(result.modelType, 0);
+  assert.equal(result.modelId, '');
+  assert.deepEqual(calls[0].body.model_info, { model_type: 0 });
 });
 
 test('structured QA blocks can be used as an answer fallback', () => {

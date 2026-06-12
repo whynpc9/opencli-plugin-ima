@@ -131,7 +131,6 @@ WebContents transport 还需要：
 
 - `lib/api.js`
 - `kb.ts`
-- `kb-info.ts`
 - `ask.ts`
 
 已实现能力：
@@ -140,7 +139,6 @@ WebContents transport 还需要：
 - 通过 Keychain 解密 Chromium Cookie。
 - 构造 ima 前端 API 所需请求头。
 - 搜索/枚举知识库。
-- 归一化并展示知识库详细元数据。
 - 按知识库目录读取文档列表的命令接口。
 - 调用 `assistant_nl/knowledge_base_qa` 并解析 SSE 响应。
 
@@ -157,6 +155,10 @@ WebContents transport 还需要：
 2. `assistant/qa`
 
 `assistant/qa` 请求体包含 `session_id`、`robot_type: 5`、`question_type: 2`、`command_info.type: 14`、`model_info`、`history_info` 和 `client_tools`。这是当前 `ask --transport webcontents` 的实现依据。
+
+`ask --transport webcontents` 默认仍会新建 session，以保持干净 one-shot 上下文。显式传 `--session-id` 时会跳过 `init_session` 并复用该 session；传 `--session continue` 时会使用本地 session-state 文件中最近一次 WebContents ask 的 session id。本地状态只保存 session id 和知识库标识，不保存真实问题或答案。
+
+模型切换通过 `model_info` 完成：`--model`/`--model-type` 设置 `model_type`，`--model-id` 设置可选 `model_id`，`--think` 会映射到已知的 thinking/non-thinking 成对模型。UI transport 不保证模型或 session 控制；在 `auto` 中出现会话控制会跳过 API/UI，出现模型控制会跳过 UI fallback。
 
 后续若要继续完善 API transport，应优先研究 native bridge 相关上下文，例如账号刷新、设备信息和加密会话，而不是只继续补 Cookie 字段。
 
@@ -208,6 +210,8 @@ opencli ima export "示例文档.pdf" --kb "我的知识库" --output ~/Download
 - 如果用户强制 `--transport api`，API 失败时直接报错，不退回 UI。
 - 如果用户使用 `--transport auto`，API 失败后会优先尝试可用 UI；如果 UI 不可用或只提供 `--kb-id`，会继续尝试 WebContents。
 - 如果只提供 `--kb-id`，UI fallback 不可用，因为 UI 只能按可见知识库名称选择；但 WebContents fallback 可以继续使用 `--kb-id`。
+- 如果使用 `--session-id` 或 `--session continue/new`，只走 WebContents；direct API 和 UI 都不会用于继续指定 WebContents session。
+- 如果使用 `--model`、`--model-type`、`--model-id` 或 `--think`，API 和 WebContents 会透传模型字段；UI fallback 会被跳过。
 - 如果目标知识库不在当前 UI 可见区域，UI transport 可能失败。
 - UI transport 会真实操作 ima.copilot，并可能留下问答历史。
 

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { test } from 'node:test';
 import { __test__ } from '../lib/webcontents.js';
+import { saveAskSession } from '../lib/session-state.js';
 
 test('selectImaWebContentsTarget prefers knowledge targets over generic pages', () => {
   const targets = [
@@ -64,6 +68,7 @@ test('WebContents frontend QA payload follows ima session-based request shape', 
     sessionId: 'session-example-1',
     question: 'example question',
     modelType: 0,
+    modelId: 'model-example-1',
   });
 
   assert.deepEqual(initPayload, {
@@ -86,6 +91,7 @@ test('WebContents frontend QA payload follows ima session-based request shape', 
   assert.deepEqual(qaPayload.commandInfo.knowledgeQaInfo.mediaIdInfos, []);
   assert.deepEqual(qaPayload.historyInfo, {});
   assert.deepEqual(qaPayload.clientTools, []);
+  assert.equal(qaPayload.modelInfo.modelId, 'model-example-1');
   assert.equal(qaPayload.modelInfo.enableEnhancement, false);
   assert.match(qaPayload.clientId, /^[0-9a-f-]{36}$/);
 });
@@ -94,4 +100,43 @@ test('extractSessionId supports frontend init_session response variants', () => 
   assert.equal(__test__.extractSessionId({ session_id: 'session-a' }), 'session-a');
   assert.equal(__test__.extractSessionId({ sessionInfo: { id: 'session-b' } }), 'session-b');
   assert.equal(__test__.extractSessionId({ session_info: { id: 'session-c' } }), 'session-c');
+});
+
+test('WebContents session resolver can continue explicit and cached sessions', async () => {
+  const explicit = await __test__.resolveAskSessionWebContents({
+    requestedSessionId: 'session-explicit-1',
+    sessionMode: 'new',
+    knowledgeBase: { id: 'kb-session-1', name: 'Knowledge One' },
+  });
+  assert.deepEqual(explicit, {
+    sessionId: 'session-explicit-1',
+    mode: 'continue',
+    knowledgeBaseId: 'kb-session-1',
+    knowledgeBaseName: 'Knowledge One',
+  });
+
+  const originalStateFile = process.env.IMA_SESSION_STATE_FILE;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencli-ima-session-test-'));
+  process.env.IMA_SESSION_STATE_FILE = path.join(tmpDir, 'ask-sessions.json');
+  try {
+    saveAskSession({
+      sessionId: 'session-cached-1',
+      knowledgeBaseId: 'kb-session-2',
+      knowledgeBaseName: 'Knowledge Two',
+    });
+    const cached = await __test__.resolveAskSessionWebContents({
+      sessionMode: 'continue',
+      knowledgeBase: { id: 'kb-session-2', name: 'Knowledge Two' },
+    });
+    assert.equal(cached.sessionId, 'session-cached-1');
+    assert.equal(cached.mode, 'continue');
+    assert.equal(cached.knowledgeBaseId, 'kb-session-2');
+  } finally {
+    if (originalStateFile === undefined) {
+      delete process.env.IMA_SESSION_STATE_FILE;
+    } else {
+      process.env.IMA_SESSION_STATE_FILE = originalStateFile;
+    }
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });

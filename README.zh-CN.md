@@ -2,7 +2,7 @@
 
 [English README](README.md)
 
-用于 OpenCLI 的 ima.copilot 插件，当前目标是对指定 ima.copilot 知识库进行一次性问答。
+用于 OpenCLI 的 ima.copilot 插件，当前目标是对指定 ima.copilot 知识库进行一次性或会话式问答。
 
 ## 功能范围
 
@@ -19,7 +19,7 @@ opencli ima ask "请总结这个知识库" --kb "我的知识库" -f json
 3. 如果 UI 输入框不可见，或 UI fallback 失败，则在 ima.copilot 真实 Chromium WebContents 中执行同款前端 API 调用。
 4. 返回一次生成结果。
 
-该插件只面向“一问一答”。它不管理多轮对话状态。
+默认仍保持“一问一答”。WebContents transport 也支持通过 `--session continue` 或显式 `--session-id` 继续之前的 `ima ask` 会话。
 
 当直接 API 遇到 ima 业务错误 `600001` 时，WebContents transport 会在真实 ima 页面上下文中调用前端 API，让账号、设备和 bkn 等请求头由 app 内 native bridge 提供：
 
@@ -62,7 +62,6 @@ opencli plugin install github:whynpc9/opencli-plugin-ima
 | `opencli ima setup [--activate]` | read | 检查 app、Accessibility、WebContents、API Cookie 和 Keychain 准备状态。 |
 | `opencli ima status` | read | 汇总当前 ima.copilot 窗口、WebContents 和 API 登录态。 |
 | `opencli ima kb [--query <name>] [--transport auto\|api\|webcontents]` | read | 列出或搜索知识库；Windows 上 `auto` 优先使用 WebContents。 |
-| `opencli ima kb-info [--query <name>] [--transport api\|webcontents]` | read | 列出更完整的知识库元数据。 |
 | `opencli ima ls --kb <name> [--path <folder>]` | read | 列出知识库目录下的文档和文件夹；`auto` 可退回 WebContents。 |
 | `opencli ima export <document> [--output <path>]` | read | 按标题或 mediaId 下载文档；`auto` 可通过 WebContents 解析下载 URL。 |
 | `opencli ima ask <question> --kb <name>` | write | 对指定知识库提一个问题。 |
@@ -95,18 +94,25 @@ opencli ima ask "请总结这个知识库" --kb-id "<KnowledgeBaseId>" --transpo
 opencli ima ask "请总结这个知识库" --kb-id "<KnowledgeBaseId>" --transport webcontents -f json
 ```
 
-### 知识库示例
-
-列出所有可访问知识库的详细信息：
+新建干净 WebContents 会话后继续追问：
 
 ```bash
-opencli ima kb-info --transport webcontents -f json
+opencli ima ask "请总结这个知识库" --kb-id "<KnowledgeBaseId>" --session new --transport webcontents -f json
+opencli ima ask "继续上一轮，列出三个重点" --kb-id "<KnowledgeBaseId>" --session continue --transport webcontents -f json
 ```
 
-按名称搜索知识库信息：
+继续指定 session id：
 
 ```bash
-opencli ima kb-info --query "我的知识库" --transport webcontents -f json
+opencli ima ask "继续追问" --session-id "<SessionId>" --transport webcontents -f json
+```
+
+选择模型或思考模式：
+
+```bash
+opencli ima ask "请总结这个知识库" --kb-id "<KnowledgeBaseId>" --model ds-v3.2 --transport webcontents -f json
+opencli ima ask "请深入分析" --kb-id "<KnowledgeBaseId>" --model ds-v3.2 --think deep --transport webcontents -f json
+opencli ima ask "请总结这个知识库" --kb-id "<KnowledgeBaseId>" --model-type 5 --model-id "<ModelId>" --transport webcontents -f json
 ```
 
 ### 文档示例
@@ -170,6 +176,8 @@ Windows 已支持 WebContents 路径。Windows direct API Cookie DPAPI 解密和
 | `IMA_API_ENDPOINT` | 覆盖 `assistant_nl/knowledge_base_qa`。 |
 | `IMA_EXTENSION_VERSION` | 覆盖 extension version 请求头。 |
 | `IMA_GUID` / `IMA_Q36` / `IMA_IUA` | API 实验中覆盖设备 Cookie 字段。 |
+| `IMA_MODEL_TYPE` / `IMA_MODEL_ID` | API 和 WebContents 实验中覆盖 ask model 字段。 |
+| `IMA_SESSION_STATE_FILE` | 覆盖用于记住最近 WebContents ask session id 的本地状态文件。 |
 | `IMA_WEBCONTENTS_CDP_PORT` | WebContents transport 使用的本地 CDP 端口；默认 `9227`。 |
 | `IMA_WEBCONTENTS_LAUNCH` | 设为 `0` 时要求用户自行启动可访问 CDP 的 ima.copilot。 |
 
@@ -190,9 +198,8 @@ package.json               npm 元数据和发布文件边界
 LICENSE                    MIT license
 CHANGELOG.md               变更记录
 DEVELOPMENT.md             本地验证和发布检查清单
-ask.ts                     一次性知识库问答命令
+ask.ts                     知识库问答命令，支持 one-shot、会话和模型控制
 kb.ts                      知识库列表/搜索命令
-kb-info.ts                 详细知识库元数据列表命令
 setup.ts                   本地准备状态检查
 status.ts                  运行时状态摘要
 dump.ts                    Accessibility tree 导出命令
@@ -232,7 +239,8 @@ OpenCLI 会扫描插件根目录下的 `.ts` 和 `.js` 命令文件。TypeScript
 - API 请求需要 `x-ima-cookie`、`from_browser_ima`、`extension_version` 和 `x-ima-bkn`。
 - direct API 当前仍可能返回 `600001`。
 - WebContents 在真实 app 页面上下文中已返回成功的知识库列表、文档列表和问答结果。
-- WebContents Q&A 使用真实前端 session 路径：先 `session_logic/init_session`，再 `assistant/qa`。
+- WebContents Q&A 使用真实前端 session 路径：先 `session_logic/init_session`，再 `assistant/qa`；显式 `--session-id` 和缓存的 `--session continue` 会复用 `assistant/qa` session id。
+- `ask` 可以向 API 和 WebContents transports 透传 `model_info.model_type` 和可选 `model_info.model_id`。UI transport 不支持切换模型。
 - `ask --transport auto` 会在 API 失败且 UI composer 不可见或 UI fallback 失败时使用 WebContents。
 - `ls --transport auto` 和 `export --transport auto` 会在 direct API 失败后尝试 WebContents。
 
@@ -244,6 +252,9 @@ OpenCLI 会扫描插件根目录下的 `.ts` 和 `.js` 命令文件。TypeScript
 - Windows WebContents launch 会使用临时 junction 指向本机 ima.copilot `User Data` 目录，以保留当前登录态。
 - WebContents transport 会开启本地调试端口，只应在可信本机桌面会话中使用。
 - `ima ask --transport webcontents` 会创建真实 ima Q&A session，可能在本机 app 账号中留下历史。
+- `ima ask --session continue` 使用本地 session-state 文件保存 session id 和知识库标识，但不保存问题或答案；可用 `IMA_SESSION_STATE_FILE` 改写位置。
+- 会话控制要求 WebContents transport；在 `auto` 中会跳过 direct API 和 UI，因为它们不能继续指定 WebContents session。
+- 模型控制支持 API 和 WebContents transport；在 `auto` 中如果出现模型参数，会跳过 UI fallback，因为 UI 自动化无法保证当前选择的模型。
 - UI transport 要求目标知识库名称在当前 UI 中可见/可选择。
 - UI transport 的 `ReferencesFound` 是 best-effort，可能受 UI 文本结构影响。
 - Direct API transport 仍需要继续研究 native bridge refresh、device 和 crypto context，才能成为唯一主路径。
