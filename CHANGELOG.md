@@ -6,7 +6,8 @@
 - Added WebContents fallback for `ima kb --transport auto`, `ima ls --transport auto`, and `ima export --transport auto`.
 - Updated setup/status diagnostics to report WebContents readiness.
 - Added Windows `ima dump` WebContents target diagnostics.
-- Documented remaining Windows gaps: direct API DPAPI cookie decryption and UI Automation fallback.
+- Added Windows DPAPI support for decrypting the Chromium cookie encryption key and AES-GCM cookie payloads.
+- Added a sanitized Windows UI Automation status probe; Windows UI transport remains unimplemented.
 
 ## 0.1.0 - 2026-06-09
 

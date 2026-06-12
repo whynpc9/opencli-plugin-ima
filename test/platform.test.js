@@ -37,11 +37,13 @@ test('platform config records Windows WebContents support and remaining gaps', (
   assert.equal(config.identifiers.clientType, 'windows');
   assert.equal(config.paths.appPath, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\ima.exe');
   assert.equal(config.paths.profileDir, 'C:\\Users\\example\\AppData\\Roaming\\ima.copilot\\Default');
+  assert.equal(config.paths.localState, 'C:\\Users\\example\\AppData\\Roaming\\ima.copilot\\Local State');
   assert.equal(config.commands.processPattern, 'ima.exe');
   assert.equal(config.capabilities.uiTransport, false);
-  assert.equal(config.capabilities.apiCookieDecryption, false);
+  assert.equal(config.capabilities.apiCookieDecryption, true);
   assert.equal(config.capabilities.webContentsLaunch, true);
-  assert.ok(config.pending.some((item) => item.includes('DPAPI')));
+  assert.ok(config.pending.some((item) => item.includes('UI Automation')));
+  assert.ok(config.pending.some((item) => item.includes('600001')));
 });
 
 test('platform config discovers Windows ima defaults from LocalAppData', () => {
@@ -57,7 +59,9 @@ test('platform config discovers Windows ima defaults from LocalAppData', () => {
   assert.equal(config.paths.appSupportDir, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\User Data');
   assert.equal(config.paths.profileDir, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\User Data\\Default');
   assert.equal(config.paths.cookieDb, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\User Data\\Default\\Extension Cookies');
+  assert.equal(config.paths.localState, 'C:\\Users\\example\\AppData\\Local\\ima.copilot\\User Data\\Local State');
   assert.equal(config.commands.processPattern, 'ima.copilot.exe');
+  assert.equal(config.capabilities.apiCookieDecryption, true);
   assert.equal(config.capabilities.webContentsLaunch, true);
   assert.equal(config.capabilities.recentPreviewScan, true);
 });

@@ -79,13 +79,15 @@ API transport 还需要：
 
 - 本机 ima.copilot Chromium Cookie DB 可读。
 - macOS Keychain 允许读取 `ima.copilot Safe Storage`，或通过环境变量提供安全存储密码。
+- Windows 上需要可读的 Chromium `Local State`，并且当前 Windows 用户可以通过 DPAPI 解密其中的 cookie key。
+- 当前 direct API 的 Cookie DB 读取仍依赖 `sqlite3` CLI。
 
 WebContents transport 还需要：
 
 - Node.js runtime 提供全局 `WebSocket`。建议 Node.js 22+。
 - ima.copilot 能以本地 CDP 端口启动，或已经由用户显式启动了可访问的 CDP 端口。
 - 本机桌面会话可信，因为该方案会开启本地调试端口。
-- Windows 上 WebContents 需要 `%LOCALAPPDATA%\ima.copilot\Application\ima.copilot.exe` 和 `%LOCALAPPDATA%\ima.copilot\User Data\Default` 存在；direct API Cookie DPAPI 解密和 Windows UI Automation fallback 仍未实现。
+- Windows 上 WebContents 需要 `%LOCALAPPDATA%\ima.copilot\Application\ima.copilot.exe` 和 `%LOCALAPPDATA%\ima.copilot\User Data\Default` 存在；direct API DPAPI cookie-key 解密已接入但仍是实验路径，Windows UI Automation fallback 仍未实现。
 
 ## WebContents Transport 实现方法
 

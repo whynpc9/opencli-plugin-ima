@@ -158,9 +158,11 @@ opencli ima export --media-id "<MediaId>" --kb-id "<KnowledgeBaseId>" --transpor
 - ima.copilot is logged in. The currently tested app version is `147.0.7727.4575`.
 - macOS Accessibility permission for the terminal/OpenCLI process if UI transport is used.
 - macOS Keychain access for `ima.copilot Safe Storage` if API transport decrypts local cookies.
+- Windows DPAPI current-user access and a readable Chromium `Local State` file if API transport decrypts local cookies on Windows.
+- `sqlite3` on `PATH` if direct API transport reads Chromium cookies from the local Cookie DB.
 - Node.js runtime with a global `WebSocket` implementation if WebContents transport is used. Node.js 22+ is recommended.
 
-Windows support is implemented for the WebContents path. Direct API cookie decryption through Windows DPAPI and Windows UI Automation fallback are still not implemented; see [Platform Adapter and OS Differences](docs/platform-adapter.md).
+Windows support is implemented for the WebContents path. Direct API can now attempt DPAPI cookie-key decryption, but it is still experimental and may return ima business error `600001`; Windows UI Automation is currently a sanitized status probe, not a UI transport fallback. See [Platform Adapter and OS Differences](docs/platform-adapter.md).
 
 ## Environment Variables
 
@@ -170,6 +172,7 @@ Windows support is implemented for the WebContents path. Direct API cookie decry
 | `IMA_COOKIE` / `IMA_COOKIE_HEADER` | Complete `x-ima-cookie` cookie string for API development. |
 | `IMA_SAFE_STORAGE_PASSWORD` | Chromium safe-storage password, used instead of Keychain lookup. |
 | `IMA_KEYCHAIN_TIMEOUT_MS` | Per-attempt Keychain read timeout. |
+| `IMA_DPAPI_TIMEOUT_MS` | Windows DPAPI cookie-key decrypt timeout. |
 | `IMA_SWIFT_TIMEOUT_MS` | Swift Accessibility subprocess timeout override. |
 | `IMA_API_BASE` | Override `https://ima.qq.com/cgi-bin`. |
 | `IMA_API_ENDPOINT` | Override `assistant_nl/knowledge_base_qa`. |
@@ -207,6 +210,7 @@ lib/api.js                 Direct ima API transport
 lib/webcontents.js         API execution inside ima.copilot's real Chromium WebContents
 lib/documents.js           Local preview URL extraction and file download helpers
 lib/ax.js                  Swift Accessibility UI transport
+lib/uia.js                 Sanitized Windows UI Automation status probe
 lib/platform.js            OS-specific paths, app launch, profile, and safe-storage adapters
 test/*.test.js             Unit and command registration tests
 docs/                      Experiment notes and implementation evidence
@@ -253,8 +257,8 @@ Evidence:
 - UI transport requires the target knowledge-base name to be visible/selectable in the current ima UI.
 - `ReferencesFound` on UI transport is best-effort and may be affected by UI text structure.
 - Direct API transport still needs more work around native bridge refresh/device/crypto context before it can be the only transport.
-- Windows direct API transport does not decrypt Chromium cookies yet; use WebContents unless you explicitly provide `IMA_COOKIE` for API experiments.
-- Windows UI transport and Accessibility dumps are not implemented; `ima dump` writes a WebContents target diagnostic on Windows.
+- Windows direct API transport can decrypt Chromium cookie keys through DPAPI, but still depends on `sqlite3` for reading the local Cookie DB and may return `600001`; use WebContents for the reliable path.
+- Windows UI transport and Accessibility dumps are not implemented. `status`/`setup` can run a sanitized UI Automation probe, while `ima dump` writes a WebContents target diagnostic on Windows.
 - `ima ls` API transport depends on `knowledge_tab_reader/get_knowledge_list`; in the current real environment this endpoint can return `600001`.
 - `ima ls` UI fallback reads the visible ima.copilot list through macOS Accessibility when Chromium exposes the WebArea content. It cannot verify `--kb-id`; use `--kb` or switch ima.copilot to the target knowledge base before `--transport ui`.
 - `ima export --transport recent` can only download documents whose preview URL is already present in the local ima.copilot profile, usually after opening the document once in the app.

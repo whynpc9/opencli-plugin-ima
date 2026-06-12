@@ -33,8 +33,8 @@ export const setupCommand = cli({
       status = 'API ready; UI probe unavailable';
       hint = 'API transport can use --kb-id. UI fallback needs Accessibility access and --kb "<knowledgeBaseName>".';
     } else if (uiProbeUnavailable && api.platform && api.platform !== 'macos') {
-      status = `${api.platformLabel || api.platform} support incomplete`;
-      hint = 'Current local UI and cookie-decryption backends are macOS-only. Use explicit IMA_COOKIE for API experiments, or implement the platform WebContents backend first.';
+      status = `${api.platformLabel || api.platform} UI fallback incomplete`;
+      hint = 'Use WebContents for the reliable Windows path. Direct API can now try DPAPI cookie decryption, but may still return ima business error 600001.';
     } else if (uiProbeUnavailable) {
       status = 'UI probe unavailable';
       hint = 'Open and log in to ima.copilot, then retry. You can also set IMA_COOKIE for local development.';
@@ -44,6 +44,9 @@ export const setupCommand = cli({
     } else if (!api.cookieDbExists && !api.explicitCookie) {
       status = 'Cookie DB missing';
       hint = 'Open and log in to ima.copilot, or set IMA_COOKIE for local development.';
+    } else if (!api.sqliteAvailable && !api.explicitCookie) {
+      status = 'sqlite3 missing';
+      hint = 'Install sqlite3 or set IMA_COOKIE for direct API experiments. WebContents can still use the local ima.copilot login state.';
     } else if (!api.ready) {
       status = 'Login cookie missing';
       hint = 'Confirm ima.copilot is logged in. The required IMA-TOKEN cookie was not found.';
@@ -62,11 +65,17 @@ export const setupCommand = cli({
       WebContents: webContents.label,
       ApiReady: api.ready ? 'yes' : 'no',
       LoginCookies: api.tokenCookie || api.explicitCookie ? 'yes' : 'no',
-      SafeStorage: api.explicitSafeStoragePassword ? 'env' : (api.encryptedCookies > 0 ? 'keychain' : 'not needed'),
+      SafeStorage: api.explicitSafeStoragePassword ? 'env' : storageLabel(api),
       Hint: hint,
     }];
   },
 });
+
+function storageLabel(api) {
+  if (api.encryptedCookies <= 0) return 'not needed';
+  if (api.platform === 'windows') return api.localStateExists ? 'dpapi' : 'local state missing';
+  return 'keychain';
+}
 
 function inspectWebContents(runtime) {
   if (!runtime.capabilities.webContentsLaunch) return { ready: false, label: 'no' };
