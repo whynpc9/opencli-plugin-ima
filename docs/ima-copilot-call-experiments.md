@@ -102,10 +102,13 @@ assistant_nl/operation_qa -> SSE opened, COMPLETED event returned ima business f
 当前插件接入：
 
 - `opencli ima kb --transport webcontents`
-- `opencli ima kb-info --transport webcontents`
 - `opencli ima ask --transport webcontents`
 - `opencli ima ls --transport webcontents`
 - `opencli ima export --transport webcontents`
+
+`ask --transport webcontents` 现在支持两类会话控制：默认或 `--session new` 会调用 `session_logic/init_session` 创建干净 session；`--session-id` 或 `--session continue` 会复用已有 session id 后直接调用 `assistant/qa`。`--session continue` 依赖本机 session-state 文件，只记录 session id 和知识库标识。
+
+模型控制通过 `model_info` 字段透传：`--model`/`--model-type` 控制 `model_type`，`--model-id` 控制 `model_id`，`--think` 映射到已知 thinking/non-thinking 成对模型。UI 自动化路径不承诺模型切换。
 
 `webcontents` 已进入 `ask --transport auto` 的后段 fallback：直接 API 失败后，如果 UI composer 不可见或 UI fallback 失败，则继续尝试 WebContents。该路径仍可能退出并重启 ima.copilot，同时会开启本地 CDP 端口。
 
@@ -264,6 +267,8 @@ opencli ima ask "<question>" --kb "<knowledgeBaseName>" --timeout 90 -f json
 3. 如果 API 失败且提供了 `--kb`，先检查 UI composer；composer 可见时调用 `askIma` UI fallback。
 4. 如果 UI composer 不可见、UI fallback 失败，或只提供了 `--kb-id`，继续调用 `askImaWebContents`。
 5. 如果 WebContents 也失败，错误中同时包含 API、UI 和 WebContents 的失败上下文。
+
+如果用户显式使用 session 参数，`auto` 会直接进入 WebContents，因为 direct API 和 UI 路径不能继续指定的 WebContents session。如果用户显式使用模型参数，`auto` 仍可先尝试 API，但会跳过 UI fallback，因为 UI 路径不能稳定保证模型选择。
 
 实际验证：
 

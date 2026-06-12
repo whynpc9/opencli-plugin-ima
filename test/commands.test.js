@@ -114,6 +114,9 @@ test('ask command exposes one-shot knowledge-base QA arguments', () => {
     'Transport',
     'KnowledgeBase',
     'KnowledgeBaseId',
+    'SessionId',
+    'SessionMode',
+    'Model',
     'Question',
     'Answer',
     'ReferencesFound',
@@ -124,7 +127,38 @@ test('ask command exposes one-shot knowledge-base QA arguments', () => {
   assert.equal(args.get('question')?.required, true);
   assert.deepEqual(args.get('transport')?.choices, ['auto', 'api', 'webcontents', 'ui']);
   assert.equal(args.get('transport')?.default, 'auto');
+  assert.deepEqual(args.get('session')?.choices, ['new', 'continue']);
+  assert.deepEqual(args.get('think')?.choices, ['default', 'fast', 'deep', 'instruct', 'thinking']);
   assert.equal(args.get('timeout')?.default, 120);
+});
+
+test('ask formatter includes session and model metadata', () => {
+  const row = askTest.formatAskResult({
+    status: 'success',
+    knowledgeBase: 'Knowledge One',
+    knowledgeBaseId: 'kb-1',
+    sessionId: 'session-1',
+    sessionMode: 'continue',
+    modelType: 5,
+    modelId: 'model-id-1',
+    question: 'Q',
+    answer: 'A',
+    referencesFound: 2,
+  }, { transport: 'webcontents', question: 'Q' });
+
+  assert.equal(row.SessionId, 'session-1');
+  assert.equal(row.SessionMode, 'continue');
+  assert.equal(row.Model, '5:model-id-1');
+});
+
+test('ask model parser resolves aliases and thinking mode', () => {
+  assert.deepEqual(askTest.parseModelOptions({ model: 'ds-v3.2' }).request, { modelType: 4 });
+  assert.deepEqual(askTest.parseModelOptions({ model: 'ds-v3.2', think: 'deep' }).request, { modelType: 5 });
+  assert.deepEqual(askTest.parseModelOptions({ model: 'hy-think', think: 'fast' }).request, { modelType: 0 });
+  assert.deepEqual(askTest.parseModelOptions({ 'model-type': 3000, 'model-id': 'custom-model' }).request, {
+    modelType: 3000,
+    modelId: 'custom-model',
+  });
 });
 
 test('status and setup expose UI composer readiness', () => {
