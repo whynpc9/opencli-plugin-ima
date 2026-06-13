@@ -79,13 +79,15 @@ API transport 还需要：
 
 - 本机 ima.copilot Chromium Cookie DB 可读。
 - macOS Keychain 允许读取 `ima.copilot Safe Storage`，或通过环境变量提供安全存储密码。
+- Windows 上需要可读的 Chromium `Local State`，并且当前 Windows 用户可以通过 DPAPI 解密其中的 cookie key。
+- 当前 direct API 的 Cookie DB 读取仍依赖 `sqlite3` CLI。
 
 WebContents transport 还需要：
 
 - Node.js runtime 提供全局 `WebSocket`。建议 Node.js 22+。
 - ima.copilot 能以本地 CDP 端口启动，或已经由用户显式启动了可访问的 CDP 端口。
 - 本机桌面会话可信，因为该方案会开启本地调试端口。
-- Windows 上 WebContents 需要 `%LOCALAPPDATA%\ima.copilot\Application\ima.copilot.exe` 和 `%LOCALAPPDATA%\ima.copilot\User Data\Default` 存在；direct API Cookie DPAPI 解密和 Windows UI Automation fallback 仍未实现。
+- Windows 上 WebContents 需要 `%LOCALAPPDATA%\ima.copilot\Application\ima.copilot.exe` 和 `%LOCALAPPDATA%\ima.copilot\User Data\Default` 存在；direct API DPAPI cookie-key 解密已接入但仍是实验路径，Windows UI Automation fallback 仍未实现。
 
 ## WebContents Transport 实现方法
 
@@ -159,6 +161,8 @@ WebContents transport 还需要：
 `ask --transport webcontents` 默认仍会新建 session，以保持干净 one-shot 上下文。显式传 `--session-id` 时会跳过 `init_session` 并复用该 session；传 `--session continue` 时会使用本地 session-state 文件中最近一次 WebContents ask 的 session id。本地状态只保存 session id 和知识库标识，不保存真实问题或答案。
 
 模型切换通过 `model_info` 完成：`--model`/`--model-type` 设置 `model_type`，`--model-id` 设置可选 `model_id`，`--think` 会映射到已知的 thinking/non-thinking 成对模型。UI transport 不保证模型或 session 控制；在 `auto` 中出现会话控制会跳过 API/UI，出现模型控制会跳过 UI fallback。
+
+Windows 4.28.6 前端的模型列表来自 `model_manage/get_models`。已验证 `ds-v3.2` 使用 `model_type=3`，`ds-v3.2 --think deep` 使用 `model_type=1`；旧的 `4/5` 会返回模型失效。
 
 后续若要继续完善 API transport，应优先研究 native bridge 相关上下文，例如账号刷新、设备信息和加密会话，而不是只继续补 Cookie 字段。
 

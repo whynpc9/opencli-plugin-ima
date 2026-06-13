@@ -4,11 +4,13 @@
 
 - Added WebContents ask session controls: `--session new`, `--session continue`, and `--session-id`.
 - Added ask model controls: `--model`, `--model-type`, `--model-id`, and `--think`.
+- Aligned DeepSeek model aliases with the Windows 4.28.6 frontend model list (`ds-v3.2` -> `3`, thinking -> `1`).
 - Added Windows WebContents launch support using the local ima.copilot install, Chromium `User Data` junctions, and `CLIENT-TYPE=windows`.
 - Added WebContents fallback for `ima kb --transport auto`, `ima ls --transport auto`, and `ima export --transport auto`.
 - Updated setup/status diagnostics to report WebContents readiness.
 - Added Windows `ima dump` WebContents target diagnostics.
-- Documented remaining Windows gaps: direct API DPAPI cookie decryption and UI Automation fallback.
+- Added Windows DPAPI support for decrypting the Chromium cookie encryption key and AES-GCM cookie payloads.
+- Added a sanitized Windows UI Automation status probe; Windows UI transport remains unimplemented.
 
 ## 0.1.0 - 2026-06-09
 

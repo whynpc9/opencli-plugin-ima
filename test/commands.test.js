@@ -152,8 +152,9 @@ test('ask formatter includes session and model metadata', () => {
 });
 
 test('ask model parser resolves aliases and thinking mode', () => {
-  assert.deepEqual(askTest.parseModelOptions({ model: 'ds-v3.2' }).request, { modelType: 4 });
-  assert.deepEqual(askTest.parseModelOptions({ model: 'ds-v3.2', think: 'deep' }).request, { modelType: 5 });
+  assert.deepEqual(askTest.parseModelOptions({ model: 'ds-v3.2' }).request, { modelType: 3 });
+  assert.deepEqual(askTest.parseModelOptions({ model: 'ds-v3.2', think: 'deep' }).request, { modelType: 1 });
+  assert.deepEqual(askTest.parseModelOptions({ model: 'ds-v3.2-think', think: 'fast' }).request, { modelType: 3 });
   assert.deepEqual(askTest.parseModelOptions({ model: 'hy-think', think: 'fast' }).request, { modelType: 0 });
   assert.deepEqual(askTest.parseModelOptions({ 'model-type': 3000, 'model-id': 'custom-model' }).request, {
     modelType: 3000,

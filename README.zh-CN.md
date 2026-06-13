@@ -159,9 +159,11 @@ opencli ima export --media-id "<MediaId>" --kb-id "<KnowledgeBaseId>" --transpor
 - ima.copilot 已登录。当前已测试 app 版本为 `147.0.7727.4575`。
 - 如果使用 UI transport，运行 OpenCLI 的终端进程需要 macOS Accessibility 权限。
 - 如果 API transport 需要解密本机 Cookie，需要允许读取 `ima.copilot Safe Storage` 的 macOS Keychain 项。
+- Windows 上如果 API transport 需要解密本机 Cookie，需要当前 Windows 用户可用的 DPAPI 和可读的 Chromium `Local State` 文件。
+- 如果 direct API transport 要从本机 Cookie DB 读取 Chromium Cookie，需要 `PATH` 中可用的 `sqlite3`。
 - 如果使用 WebContents transport，Node.js runtime 需要提供全局 `WebSocket`；推荐 Node.js 22+。
 
-Windows 已支持 WebContents 路径。Windows direct API Cookie DPAPI 解密和 Windows UI Automation fallback 尚未实现；详见 [Platform Adapter and OS Differences](docs/platform-adapter.md)。
+Windows 已支持 WebContents 路径。Direct API 现在可以尝试通过 DPAPI 解密 Chromium cookie key，但仍是实验路径，可能继续返回 ima 业务错误 `600001`；Windows UI Automation 目前只是匿名化状态探针，不是 UI transport fallback。详见 [Platform Adapter and OS Differences](docs/platform-adapter.md)。
 
 ## 环境变量
 
@@ -171,6 +173,7 @@ Windows 已支持 WebContents 路径。Windows direct API Cookie DPAPI 解密和
 | `IMA_COOKIE` / `IMA_COOKIE_HEADER` | 用于 API 实验的完整 `x-ima-cookie` 字符串。 |
 | `IMA_SAFE_STORAGE_PASSWORD` | Chromium safe-storage password；用于替代 Keychain 读取。 |
 | `IMA_KEYCHAIN_TIMEOUT_MS` | 单次 Keychain 读取超时时间。 |
+| `IMA_DPAPI_TIMEOUT_MS` | Windows DPAPI cookie-key 解密超时时间。 |
 | `IMA_SWIFT_TIMEOUT_MS` | Swift Accessibility 子进程超时时间。 |
 | `IMA_API_BASE` | 覆盖 `https://ima.qq.com/cgi-bin`。 |
 | `IMA_API_ENDPOINT` | 覆盖 `assistant_nl/knowledge_base_qa`。 |
@@ -209,6 +212,7 @@ lib/api.js                 直接 ima API transport
 lib/webcontents.js         在真实 ima Chromium WebContents 中执行 API
 lib/documents.js           本地预览 URL 提取和文件下载辅助
 lib/ax.js                  Swift Accessibility UI transport
+lib/uia.js                 匿名化 Windows UI Automation 状态探针
 lib/platform.js            OS-specific 路径、app 启动、profile 和 safe-storage 适配
 test/*.test.js             单元测试和命令注册测试
 docs/                      实验记录和实现证据
@@ -241,6 +245,7 @@ OpenCLI 会扫描插件根目录下的 `.ts` 和 `.js` 命令文件。TypeScript
 - WebContents 在真实 app 页面上下文中已返回成功的知识库列表、文档列表和问答结果。
 - WebContents Q&A 使用真实前端 session 路径：先 `session_logic/init_session`，再 `assistant/qa`；显式 `--session-id` 和缓存的 `--session continue` 会复用 `assistant/qa` session id。
 - `ask` 可以向 API 和 WebContents transports 透传 `model_info.model_type` 和可选 `model_info.model_id`。UI transport 不支持切换模型。
+- Windows 4.28.6 模型 smoke：`model_manage/get_models` 返回 HY 2.0 (`0`)、HY 2.0 Think (`2`)、DeepSeek V3.2 (`3`) 和 DeepSeek V3.2 Think (`1`)；`ds-v3.2` aliases 使用这些值。
 - `ask --transport auto` 会在 API 失败且 UI composer 不可见或 UI fallback 失败时使用 WebContents。
 - `ls --transport auto` 和 `export --transport auto` 会在 direct API 失败后尝试 WebContents。
 
@@ -258,8 +263,8 @@ OpenCLI 会扫描插件根目录下的 `.ts` 和 `.js` 命令文件。TypeScript
 - UI transport 要求目标知识库名称在当前 UI 中可见/可选择。
 - UI transport 的 `ReferencesFound` 是 best-effort，可能受 UI 文本结构影响。
 - Direct API transport 仍需要继续研究 native bridge refresh、device 和 crypto context，才能成为唯一主路径。
-- Windows direct API transport 尚不能解密 Chromium Cookie；除非显式提供 `IMA_COOKIE` 做 API 实验，否则应使用 WebContents。
-- Windows UI transport 和 Accessibility dump 尚未实现；`ima dump` 在 Windows 上会写出 WebContents target 诊断信息。
+- Windows direct API transport 可以通过 DPAPI 解密 Chromium cookie key，但仍依赖 `sqlite3` 读取本地 Cookie DB，并且可能返回 `600001`；稳定路径仍建议使用 WebContents。
+- Windows UI transport 和 Accessibility dump 尚未实现；`status`/`setup` 可以运行匿名化 UI Automation 探针，`ima dump` 在 Windows 上会写出 WebContents target 诊断信息。
 - `ima ls` 的 API transport 依赖 `knowledge_tab_reader/get_knowledge_list`，真实环境中该 endpoint 可能返回 `600001`。
 - `ima export --transport recent` 只能下载本机 ima.copilot profile 中已经存在预览 URL 的文档，通常需要先在 app 中打开过该文档。
 

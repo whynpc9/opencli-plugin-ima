@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as crypto from 'node:crypto';
 import { afterEach, beforeEach, test } from 'node:test';
 import { askImaApi, listKnowledgeBases, listKnowledgeDocuments, normalizeKnowledgeBase, __test__ as apiTest } from '../lib/api.js';
 
@@ -288,6 +289,33 @@ test('structured QA blocks can be used as an answer fallback', () => {
   });
 
   assert.equal(text, 'hello world\nfrom markdown');
+});
+
+test('decryptChromeCookie supports Windows AES-GCM cookie payloads', () => {
+  const key = Buffer.alloc(32, 7);
+  const nonce = Buffer.alloc(12, 3);
+  const hostKey = 'khmgfdkajnigikondkcjbaflpjflfiee';
+  const plaintext = Buffer.concat([
+    crypto.createHash('sha256').update(hostKey).digest(),
+    Buffer.from('token-value', 'utf8'),
+  ]);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, nonce);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const encryptedHex = Buffer.concat([
+    Buffer.from('v10', 'utf8'),
+    nonce,
+    ciphertext,
+    cipher.getAuthTag(),
+  ]).toString('hex');
+
+  const value = apiTest.decryptChromeCookie({
+    encryptedHex,
+    hostKey,
+    metaVersion: 24,
+    material: { platform: 'windows', key },
+  });
+
+  assert.equal(value, 'token-value');
 });
 
 function jsonResponse(body) {
